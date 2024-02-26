@@ -1,12 +1,10 @@
-s = "dense_concat1"
-match s:
-    case _ if 'left' in s:
-        print("A string contém 'left'")
-    case _ if 'right' in s:
-        print("A string contém 'right'")
-    case _ if 'concat' in s:
-        print("A string contém 'concat'")
-    case _:
-        print("A string não contém nada")
+act_list = [(5, 1.2), (3, 1.3), (2, 1.4), (1, 1.5), (4, 1.6)]
 
-print('right' in s)
+k = 3
+
+string = ''
+for i in range(k):
+    eol = '\n' if i != k - 1 else ''
+    string += f'{act_list[i][0]}: {act_list[i][1]:.4f}{eol}'
+
+print(string)
