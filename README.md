@@ -13,7 +13,7 @@ Code to handle creation and visualization of neural networks using Keras. It was
 
 It is possible to import the MNIST dataset using `keras.datasets.mnist`.
 
-## Creating model or loading it from file
+## Creating a model or loading it from a file
 
 One use of this program is creating a new model, generating its training and testing data (requires importing MNIST dataset), training it and finally using it for visualization. Another possible use of this program is loading a model from a file, importing the MNIST dataset and then using it for visualization.
 
