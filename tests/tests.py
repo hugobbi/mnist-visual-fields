@@ -1,10 +1,9 @@
-act_list = [(5, 1.2), (3, 1.3), (2, 1.4), (1, 1.5), (4, 1.6)]
+import numpy as np
 
-k = 3
+a = [np.array([8, 9, 10, 11]), np.array([12, 13, 14])]
+b = [np.array([1, 2, 3, 4]), np.array([5, 6, 7])]
 
-string = ''
-for i in range(k):
-    eol = '\n' if i != k - 1 else ''
-    string += f'{act_list[i][0]}: {act_list[i][1]:.4f}{eol}'
+c = np.mean([a, b], axis=0)
 
-print(string)
+print(c)
+
