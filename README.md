@@ -79,3 +79,13 @@ Attribute lenses are used to inspect which digits are represented inside each hi
 ### Custom forward pass function
 
 For every forward pass computed in this program, the `compute_forward_pass` function is used. It can be customized to work in different ways for each time the forward pass is computed.
+
+## Computing cosine similarity matrix
+
+In order to compute the cosine similarity matrix (CSM) for the model, it is first necesary to compute the prototype for each digit for each layer. This is done by using the `generate_prototypes` function. It is recommended to use the `generate_prototypes_mp` function, as it uses all cores of the CPU to compute the prototypes in parallel.
+
+To finnaly compute the CSM, use the `compute_cosine_similarity_matrix` function.
+
+### Visualizing CSM
+
+To visualize the matrices, use the `plot_cs_matrix` function.
