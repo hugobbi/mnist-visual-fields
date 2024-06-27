@@ -80,12 +80,24 @@ Attribute lenses are used to inspect which digits are represented inside each hi
 
 For every forward pass computed in this program, the `compute_forward_pass` function is used. It can be customized to work in different ways for each time the forward pass is computed.
 
-## Computing cosine similarity matrix
+## Computing cosine similarity matrices
 
-In order to compute the cosine similarity matrix (CSM) for the model, it is first necesary to compute the prototype for each digit for each layer. This is done by using the `generate_prototypes` function. It is recommended to use the `generate_prototypes_mp` function, as it uses all cores of the CPU to compute the prototypes in parallel.
+In order to compute the cosine similarity matrix (CSM) for every layer of the model, it is first necesary to compute the prototype for each digit for each layer. This is done by using the `generate_prototypes` function. It is recommended to use the `generate_prototypes_mp` function, as it uses all cores of the CPU to compute the prototypes in parallel.
 
-To finnaly compute the CSM, use the `compute_cosine_similarity_matrix` function.
+To finnaly compute the CSMs, use the `compute_cosine_similarity_matrix` function.
 
 ### Visualizing CSM
 
-To visualize the matrices, use the `plot_cs_matrix` function.
+To visualize the matrices, use the `plot_csm` function. The alternative `plot_csm_interactively` plots the matrix in the same way, the difference being the user can
+choose from an interactive dropbar which layer to plot the CSM from. It is important to note that the CSM is symmetrical, and the values on the lower half are not
+computed. To represent them, they are colored black by default, but this can be changed using the `color_not_computed` parameter.
+
+## Computing orthogonality
+
+### SRF layers
+
+Calculating the orthogonality measure for SRF layers can be done using the `compute_orthogonality_srf` function.
+
+### DRF layers
+
+This functionality is not yet implemented
