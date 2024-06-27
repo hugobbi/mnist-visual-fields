@@ -1,10 +1,24 @@
-act_list = [(5, 1.2), (3, 1.3), (2, 1.4), (1, 1.5), (4, 1.6)]
+import multiprocessing as mp
+import numpy as np
 
-k = 3
+# test = np.array([
+#     [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+#     [11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+# ])
 
-string = ''
-for i in range(k):
-    eol = '\n' if i != k - 1 else ''
-    string += f'{act_list[i][0]}: {act_list[i][1]:.4f}{eol}'
+# def process_element(i, j):
+#     print(test[i][j])
 
-print(string)
+# pool = mp.Pool()
+# for i in range(test.shape[0]):
+#     for j in range(test.shape[1]):
+#         pool.apply_async(process_element, args=(i, j))
+
+# pool.close()
+# pool.join()
+
+
+def tt(**a):
+    print(a)
+
+tt(a=1, b=2)
