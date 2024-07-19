@@ -94,10 +94,4 @@ computed. To represent them, they are colored black by default, but this can be 
 
 ## Computing orthogonality
 
-### SRF layers
-
-Calculating the orthogonality measure for SRF layers can be done using the `compute_orthogonality_srf` function.
-
-### DRF layers
-
-This functionality is not yet implemented
+Calculating the orthogonality measure can be done using the `compute_orthogonality` function.
