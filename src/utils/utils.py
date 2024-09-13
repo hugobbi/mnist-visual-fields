@@ -128,14 +128,13 @@ def display_n_digits(x_data, y_data, digit: int, n: int) -> None:
     """
     digit_indices = get_n_digits_indices(y_data, digit, n)
     for idx in digit_indices:
-        show_single_digit(x_data, idx, print_index=True)    
+        show_instance(x_data, index=idx, print_index=True)
 
-def plot_training_testing_accuracy(history):
+def plot_loss_accuracy(history):
     plt.plot(history.history["accuracy"], label="Training Accuracy")
-    plt.plot(history.history["val_accuracy"], label="Testing Accuracy")
-    plt.title("Training and Testing Accuracy")
+    plt.plot(history.history["loss"], label="Training Accuracy")
+    plt.title("Training Loss and Accuracy")
     plt.xlabel("Epoch")
-    plt.ylabel("Accuracy")
     plt.legend()
     plt.show()
 
@@ -267,3 +266,52 @@ def get_number_of_neurons_in_layer(layer: tf.keras.layers.Layer) -> int:
     Returns the number of neurons present in a layer of a Neural Network
     """
     return layer.output_shape[-1]
+
+def compute_activations(model: tf.keras.Model, *input_data: np.array) -> List[np.array]:
+    """
+    Generates the individual neuron activation values for an input of a model
+
+    Input:
+    model: tf.keras.Model: model to be used for prediction
+    input_data: np.array: input data to be used for prediction, one array for each input
+
+    Output:
+    List[np.array]: list of activations for each layer of the model
+    """
+
+    # Creating intermediate models
+    intermediate_layer_models = [
+        tf.keras.models.Model(
+            inputs=model.input, outputs=layer.output) for layer in model.layers
+    ]
+
+    # Reshaping input data to include channel info
+    reshaped_input_data = [data.reshape((1, 28, 28)) for data in input_data]
+
+    # Getting activations
+    activations = [
+        intermediate_layer_model(reshaped_input_data, training=False)[0] for intermediate_layer_model in intermediate_layer_models
+    ]   # Model result is returned inside a list, hence we get the first element of that list
+
+    return activations
+
+def compute_mean_dynamically(mean_list: List[np.array], new_list: List[np.array], k: int) -> List[np.array]:
+    """
+    Computes the mean of a list of arrays dynamically using the formula:
+    mean = (k * mean + new) / (k + 1)
+
+    Input:
+    mean_list: List[np.array]: list of arrays representing the mean to be calculated
+    new_list: List[np.array]: list of arrays representing the new values to be added to the mean
+    k: int: number of times the mean has been computed
+
+    Output:
+    List[np.array]: list of arrays representing the new mean
+    """
+
+    new_mean_list = []
+    for mean, new in zip(mean_list, new_list):
+        mean = (mean * k + new) / (k + 1)
+        new_mean_list.append(mean)
+
+    return new_mean_list

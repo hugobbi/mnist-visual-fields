@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from typing import List, Tuple
 from attr import define
-from utils.utils import normalize_ndarray, get_current_time_string
+from utils.utils import normalize_ndarray, get_current_time_string, compute_activations
 import os
 
 @define
@@ -58,34 +58,6 @@ class Layer:
 
 class PlottedModel(tf.keras.Model):
     pass
-
-def compute_activations(model: tf.keras.Model, *input_data: np.array) -> List[np.array]:
-    """
-    Generates the individual neuron activation values for an input of a model
-
-    Input:
-    model: tf.keras.Model: model to be used for prediction
-    input_data: np.array: input data to be used for prediction, one array for each input
-
-    Output:
-    List[np.array]: list of activations for each layer of the model
-    """
-
-    # Creating intermediate models
-    intermediate_layer_models = [
-        tf.keras.models.Model(
-            inputs=model.input, outputs=layer.output) for layer in model.layers
-    ]
-
-    # Reshaping input data to include channel info
-    reshaped_input_data = [data.reshape((1, 28, 28)) for data in input_data]
-
-    # Getting activations
-    activations = [
-        intermediate_layer_model(reshaped_input_data, training=False)[0] for intermediate_layer_model in intermediate_layer_models
-    ]   # Model result is returned inside a list, hence we get the first element of that list
-
-    return activations
 
 def get_image(neural_activation: np.array):
     """
