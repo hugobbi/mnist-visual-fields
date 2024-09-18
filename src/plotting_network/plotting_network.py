@@ -22,9 +22,8 @@ class Position:
     def __str__(self):
         return f"Position({self.x}, {self.y})"
 
-
 @define
-class Neuron:
+class PlottedNeuron:
     """
     Class representing a neuron in the Neural Network plot
     """
@@ -33,9 +32,8 @@ class Neuron:
     position: Position
     radius: float
 
-
 @define
-class Layer:
+class PlottedLayer(tf.keras.layers):
     """
     Class representing a layer in the Neural Network plot
     """
@@ -43,8 +41,11 @@ class Layer:
     model: tf.keras.layers
     activations: List[float] | None = None
     position: Position | None = None
-    neurons: List[Neuron] | None = None
+    neurons: List[PlottedNeuron] | None = None
     num_neurons: int | None = None
+
+    def __init__(self, layer: tf.keras.layers) -> None:
+        super().__init__()
 
     def __attrs_post_init__(self):
         self.neurons = ([])  # This is needed to fix bug where list is not empty at start
@@ -56,8 +57,33 @@ class Layer:
     def set_y_position(self, y_position):
         self.position.y = y_position
 
-class PlottedModel(tf.keras.Model):
-    pass
+class NeuralNetworkPlotter:
+    def __init__(
+            self, 
+            model: tf.keras.Model, 
+            max_neurons: int = 300,
+            weight_threshold: float = 0.5,
+            attribute_lenses: List[tf.keras.Model] | None = None,
+            num_attr_lenses_top_activations: int = 3,
+            save_plots: bool = True,
+            ) -> None:
+        
+        self.model = model
+        self.max_neurons = max_neurons
+        self.weight_threshold = weight_threshold
+        self.attribute_lenses = attribute_lenses
+        self.num_attr_lenses_top_activations = num_attr_lenses_top_activations
+        self.save_plots = save_plots
+        self._layers = []
+
+    # Single visual field plot function
+    def plot(self, data: np.array) -> None:
+        pass
+
+    # Double visual field plot function
+    def plot(self, left_vf_data: np.array, right_vf_data: np.array) -> None:
+        pass
+
 
 def get_image(neural_activation: np.array):
     """
