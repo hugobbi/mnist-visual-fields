@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import re
-from typing import Tuple, List, Generator, Dict
+from typing import Tuple, List, Generator, Dict, Optional
 from multiprocessing import Pool
 from utils.utils import get_n_digits_indices, compute_activations, compute_forward_pass, compute_mean_dynamically, is_double_visual_field_model, compute_cosine_similarity, is_left_visual_field_layer
 import matplotlib.pyplot as plt
@@ -10,13 +10,13 @@ import ipywidgets as widgets
 from IPython.display import display
 from itertools import combinations
 
-def args_generator(is_drf_model: bool, x_data: np.array, digit_instances: List[int | None], n: int) -> Generator[Tuple[np.array, np.array, Tuple[int, int, int]], None, None]:
+def args_generator(is_drf_model: bool, x_data: np.array, digit_instances: List[Optional[int]], n: int) -> Generator[Tuple[np.array, np.array, Tuple[int, int, int]], None, None]:
     """
     Generates the arguments to be used in prototype calculation
 
     Input:
     x_data: np.array: input dataset to be used for prototype generation
-    digit_instances: List[int | None]: list of indices of the instances of each digit
+    digit_instances: List[Optional[int]]: list of indices of the instances of each digit
     n: int: number of instances of a digit to be used to compute the prototype for that digit
 
     Output:
@@ -438,7 +438,7 @@ def plot_orthogonality(orthogonalities: Dict[str, np.array], deviations: Dict[st
     plt.show()
 
 class EpochStopping(tf.keras.callbacks.Callback):
-    def __init__(self, max_epochs: int, acc_diff_threshold: float = 0.01, n_accs: int = 5, max_train_acc: float | None = None):
+    def __init__(self, max_epochs: int, acc_diff_threshold: float = 0.01, n_accs: int = 5, max_train_acc: Optional[float] = None):
         super(EpochStopping, self).__init__()
         self._prev_accs = []
         self._current_acc = 0

@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from attr import define
 from utils.utils import normalize_ndarray, get_current_time_string, compute_activations
 import os
@@ -38,24 +38,46 @@ class PlottedLayer(tf.keras.layers):
     Class representing a layer in the Neural Network plot
     """
 
-    model: tf.keras.layers
-    activations: List[float] | None = None
-    position: Position | None = None
-    neurons: List[PlottedNeuron] | None = None
-    num_neurons: int | None = None
+    activations: Optional[List[float]] = None
+    position: Optional[Position] = None
+    neurons: Optional[List[PlottedNeuron]] = None
+    num_neurons: Optional[int] = None
 
-    def __init__(self, layer: tf.keras.layers) -> None:
-        super().__init__()
+    def __init__(self, original_layer, **kwargs):
+        super(PlottedLayers, self).__init__(**kwargs)
+        # Copying attributes from original layer
+        for attr in dir(original_layer):
+            if not attr.startswith("__") and not callable(getattr(original_layer, attr)):
+                setattr(self, attr, getattr(original_layer, attr))
 
     def __attrs_post_init__(self):
-        self.neurons = ([])  # This is needed to fix bug where list is not empty at start
-        self.num_neurons = self.model.output_shape[-1]
+        self.neurons = ([])  # this is needed to fix bug where list is not empty at start
+        self.num_neurons = self.output_shape[-1]
 
     def is_output_layer(self):
-        return not bool(self.model._outbound_nodes)
+        return not bool(self._outbound_nodes)
 
     def set_y_position(self, y_position):
         self.position.y = y_position
+
+@define
+class PlottingControl:
+    """
+    Class representing control variables for plotting the Neural Network
+    """
+
+    left_vf: List[PlottedLayer] = []
+    right_vf: List[PlottedLayer] = []
+    concatenated_vf: List[PlottedLayer] = []
+    reference: Optional[List[PlottedLayer]] = None
+    left_idx: int = 0
+    right_idx: int = 0
+    concat_idx: int = 0
+    concat_left_idx: int = 0
+    concat_right_idx: int = 0
+    has_concatenated: bool = False
+    is_concatenate_layer: bool = False
+    plot_connections_left_vf: bool = True  # used in concatenate layer
 
 class NeuralNetworkPlotter:
     def __init__(
@@ -63,7 +85,7 @@ class NeuralNetworkPlotter:
             model: tf.keras.Model, 
             max_neurons: int = 300,
             weight_threshold: float = 0.5,
-            attribute_lenses: List[tf.keras.Model] | None = None,
+            attribute_lenses: Optional[List[tf.keras.Model]] = None,
             num_attr_lenses_top_activations: int = 3,
             save_plots: bool = True,
             ) -> None:
@@ -74,15 +96,89 @@ class NeuralNetworkPlotter:
         self.attribute_lenses = attribute_lenses
         self.num_attr_lenses_top_activations = num_attr_lenses_top_activations
         self.save_plots = save_plots
-        self._layers = []
+        self.controller = None
 
     # Single visual field plot function
     def plot(self, data: np.array) -> None:
         pass
 
     # Double visual field plot function
-    def plot(self, left_vf_data: np.array, right_vf_data: np.array) -> None:
-        pass
+    def plot(self, 
+             left_vf_data: np.array, 
+             right_vf_data: np.array,
+             model: Optional[tf.keras.Model] = None,
+             max_neurons: Optional[int] = None,
+             weight_threshold: Optional[float] = None,
+             attribute_lenses: Optional[List[tf.keras.Model]] = None,
+             num_attr_lenses_top_activations: Optional[int] = None,
+             save_plot: Optional[bool] = None) -> None:
+        
+        """
+        Receives a trained model with two visual fields and an input, displaying the entire neural network with its
+        activations for that input.
+
+        Observation: the attention value for each visual field is applied in the function input data
+
+        Input: 
+        model: tf.keras.Model: model to be used for visualization
+        left_vf_data: np.array: left visual field data
+        right_vf_data: np.array: right visual field data
+        max_neurons: int: maximum number of neurons to be plotted in a layer (default: 300)
+        weight_threshold: float: minimum weight value to be plotted, considering normalized values between 0 and 1 (default: 0.5)
+        attribute_lenses: Optional[List[tf.keras.Model]]: list of models to be used as attribute lenses for each layer (default: None)
+        num_attr_lenses_top_activations: int: number of top digit activations displayed for each attribute lens (default: 3)
+        save_plot: bool: if the neural network plot should be saved as an image (default: True)
+
+        Output:
+        displays and saves the image in results/images/ if requested
+        """
+        
+        # Setting default values
+        if model is None:
+            model = self.model
+        if max_neurons is None:
+            max_neurons = self.max_neurons
+        if weight_threshold is None:
+            weight_threshold = self.weight_threshold
+        if attribute_lenses is None:
+            attribute_lenses = self.attribute_lenses
+        if num_attr_lenses_top_activations is None:
+            num_attr_lenses_top_activations = self.num_attr_lenses_top_activations
+        if save_plot is None:
+            save_plot = self.save_plots
+
+        # Determining matplotlib figure parameters
+        fig = plt.figure(figsize=(24, 24))
+        ax = fig.gca()
+        ax.axis("off")
+        top, bottom, left, right = compute_figure_sizes(top=0.98)
+        middle = round((top + bottom) / 2, ndigits=4)
+        middle_spacing = 0.02
+
+        # Calculating neural network activations
+        model_activations = compute_activations(model, left_vf_data, right_vf_data)
+
+        # Determining neural network figure parameters
+        connection_opacity = 0.2
+        color_connection_opacity = 0.5
+        left_vf_position = Position(left, 1.5 * middle)  # initial position of left visual field
+        right_vf_position = Position(left, 0.5 * middle)  # initial position of right visual field
+
+        # Plotting layers
+        model_number_of_layers = len(model.layers)
+        self.controller = PlottingControl()
+
+        for i, layer in enumerate(model.layers):
+            match layer.name:
+                case s if "input" in s:
+                    if "left" in layer.name:
+                        pass
+                    else:
+                        pass
+                case _:
+                    break
+
+
 
 
 def get_image(neural_activation: np.array):

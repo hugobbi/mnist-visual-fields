@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 from attr import define
 import numpy as np
 
@@ -9,18 +9,21 @@ class Data:
 
 @define
 class DataTwoFields:
-    x_left: np.ndarray
-    x_right: np.ndarray
-    y: np.ndarray
+    x_left: Optional[np.ndarray] = None
+    x_right: Optional[np.ndarray] = None
+    y: Optional[np.ndarray] = None
+
+    def shape(self) -> None:
+        print(f"x_left: {self.x_left.shape}, x_right: {self.x_right.shape}, y: {self.y.shape}")
 
 class Dataset:
-    def __init__(self, x_train: np.array, x_test: np.array, y_train: np.array, y_test: np.array):
-        self.train = Data(x_train, y_train) 
-        self.test = Data(x_test, y_test)
-        self.train_vf = DataTwoFields(None, None, None)
-        self.test_vf = DataTwoFields(None, None, None)
+    def __init__(self, train: Data, test: Data):
+        self.train = train
+        self.test = test
+        self.train_vf = DataTwoFields()
+        self.test_vf = DataTwoFields()
 
-    def shuffle(self, data: Data, n: int | None = None):
+    def shuffle(self, data: Data, n: Optional[int] = None):
         original_size = len(data.y)
         if n is None:
             random_indices = np.random.permutation(original_size)
@@ -29,7 +32,7 @@ class Dataset:
 
         return data.x[random_indices], data.y[random_indices]
 
-    def shuffle_vf(self, vf: DataTwoFields, n: int | None = None):
+    def shuffle_vf(self, vf: DataTwoFields, n: Optional[int] = None):
         original_size = len(vf.y)
         if n is None:
             random_indices = np.random.permutation(original_size)
@@ -37,26 +40,26 @@ class Dataset:
             random_indices = np.random.choice(np.arange(0, original_size), n)
 
         return vf.x_left[random_indices], vf.x_right[random_indices], vf.y[random_indices]
-
+    
     def build_vf(self, x_data: np.array, y_data: np.array) -> Tuple[np.array, np.array, np.array]:
-        n = len(y_data) * self.final_size
+        n = len(y_data) * self._final_size
         x_data_left, y_data_left = self.shuffle(Data(x_data, y_data), n)
         x_data_right, y_data_right = self.shuffle(Data(x_data, y_data), n)
         y_data_final = np.zeros(n, dtype=int)
         for i in range(n):
             data_with_cs = np.random.choice(
-                [False, True], p=[1 - self.proportion_cs, self.proportion_cs]
+                [False, True], p=[1 - self._proportion_cs, self._proportion_cs]
             )
             data_with_left_attention = np.random.choice(
-                [False, True], p=[1 - self.proportion_left, self.proportion_left]
+                [False, True], p=[1 - self._proportion_left, self._proportion_left]
             )
 
             # Determines value of attention if dataset entry is CS or SS
             if data_with_cs:
-                attention = self.full_attention_value
-                no_attention = self.reduced_attention_value
+                attention = self._full_attention_value
+                no_attention = self._reduced_attention_value
             else:
-                attention = self.ss_attention_value
+                attention = self._ss_attention_value
                 no_attention = 0
 
             # Determines which visual field has attention
@@ -92,12 +95,12 @@ class Dataset:
         ss_attention_value: float: value of the attention for SS (default is 0.5)
         """
         
-        self.final_size = final_size
-        self.proportion_cs = proportion_cs
-        self.proportion_left = proportion_left
-        self.full_attention_value = full_attention_value
-        self.reduced_attention_value = reduced_attention_value
-        self.ss_attention_value = ss_attention_value
+        self._final_size = final_size
+        self._proportion_cs = proportion_cs
+        self._proportion_left = proportion_left
+        self._full_attention_value = full_attention_value
+        self._reduced_attention_value = reduced_attention_value
+        self._ss_attention_value = ss_attention_value
         
         self.train_vf.x_left, self.train_vf.x_right, self.train_vf.y = self.build_vf(self.train.x, self.train.y)
         self.test_vf.x_left, self.test_vf.x_right, self.test_vf.y = self.build_vf(self.test.x, self.test.y)
