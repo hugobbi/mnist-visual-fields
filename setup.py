@@ -10,7 +10,7 @@ setup(
         'tensorflow==2.15.0',
         'numpy',
         'matplotlib',
-        'attr',
+        'attrs',
         'ipywidgets'
     ],
     url='https://github.com/hugobbi/mnist-visual-fields',
