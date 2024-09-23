@@ -295,6 +295,28 @@ def compute_activations(model: tf.keras.Model, *input_data: np.array) -> List[np
 
     return activations
 
+def compute_digits_model_predicts(model: tf.keras.Model, *data: np.array) -> List[Tuple[int, float]]:
+    '''
+        Returns a list with the activations of the output layer of the model for each digit.
+        The list is sorted in descending order of activation.
+
+        Input:
+        model: tf.keras.Model: model to be used for prediction
+        *data: np.array: input data to be used for prediction, could be one or two arrays
+        
+        Output: [(digit, activation), ...]
+    
+    '''
+    activations = compute_activations(model, *data)
+    activations = activations[-1]
+    digit_activations = []
+    for digit, activation in enumerate(activations):
+        digit_activations.append((digit, activation))
+    
+    digit_activations = sorted(digit_activations, key=lambda item: item[1], reverse=True)
+        
+    return digit_activations
+
 def compute_mean_dynamically(mean_list: List[np.array], new_list: List[np.array], k: int) -> List[np.array]:
     """
     Computes the mean of a list of arrays dynamically using the formula:

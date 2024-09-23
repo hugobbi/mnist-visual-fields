@@ -12,17 +12,19 @@ def main():
     mnist_dataset = tf.keras.datasets.mnist
     (x_train, y_train), (x_test, y_test) = mnist_dataset.load_data()
     x_train, x_test = normalize_dataset(x_train, x_test)
-    train = Data(x_train, y_train)
-    test = Data(x_test, y_test)
+    # train = Data(x_train, y_train)
+    # test = Data(x_test, y_test)
 
-    dataset = Dataset(train, test)
-    dataset.build_vf_dataset(proportion_cs=0.5, 
-                            proportion_left=0.5, 
-                            full_attention_value=1, 
-                            reduced_attention_value=0.5, 
-                            ss_attention_value=0.5)
+    # dataset = Dataset(train, test)
+    # dataset.build_vf_dataset(proportion_cs=0.5, 
+    #                         proportion_left=0.5, 
+    #                         full_attention_value=1, 
+    #                         reduced_attention_value=0.5, 
+    #                         ss_attention_value=0.5)
 
-    model_dir = 'models/model_t1_denser_50_256/'
+    # dataset = load_obj("./dataset.dat")
+
+    model_dir = '../models/model_t1_denser_50_256/'
     model_path = model_dir + 'model.keras'
     out_models_dir = model_dir + 'out_models/'
 
