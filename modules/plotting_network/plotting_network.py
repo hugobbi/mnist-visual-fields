@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Set
 from attr import define
 from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts
 from collections.abc import Iterable
@@ -43,24 +43,44 @@ class PlottedLayer():
         self.name = original_layer.name
         self.weights = original_layer.get_weights()
         self.activations = activations
-        self.position = position
+        self.position = position if position is not None else Position(0, 0)
         self.num_neurons = self.__compute_num_neurons(original_layer.output_shape[-1])
+        self.neurons = []
         self.type = original_layer.__class__.__name__
         self.is_input_layer = self.type == "InputLayer"
         self.is_output_layer = not bool(original_layer._outbound_nodes)
         self.is_concatenate_layer = self.type == "Concatenate"
-        self.previous_layer = original_layer._inbound_nodes[0].inbound_layers[0] if not self.is_input_layer else None
+        self.previous_layers = self.__get_previous_layers(original_layer)
 
-    def __attrs_post_init__(self):
-        self.neurons = ([])  # this is needed to fix bug where list is not empty at start
+    # def __attrs_post_init__(self):
+    #     self.neurons = ([])  # this is needed to fix bug where list is not empty at start
 
+    def __str__(self):
+        return f"PlottedLayer({self.name}, {self.type}, {self.num_neurons}, is_input={self.is_input_layer}, is_output={self.is_output_layer}, is_concat={self.is_concatenate_layer})"
+    
     def __compute_num_neurons(self, num_neurons) -> int:
         if (isinstance(num_neurons, Iterable)):
             return (lambda x, y, z: y * z)(*num_neurons)
         return int(num_neurons)
-
-    def set_y_position(self, y_position):
-        self.position.y = y_position
+    
+    def __get_previous_layers(self, layer: tf.keras.layers.Layer) -> List[tf.keras.layers.Layer]:
+        previous_layers = layer._inbound_nodes[0].inbound_layers
+        if type(previous_layers) == list:
+            return previous_layers
+        return [previous_layers]
+    
+    def get_previously_plotted_layer(self, plotted_layers: List["PlottedLayer"]) -> Optional["PlottedLayer"]:
+        pl_queue = self.previous_layers
+        while pl_queue:
+            pl = pl_queue.pop(0)
+            #print(pl.name, set(map(lambda plt_layer: plt_layer.name, plotted_layers)))
+            for plt_layer in plotted_layers:
+                if plt_layer.name == pl.name:
+                    return plt_layer
+            pl_previous_layers = self.__get_previous_layers(pl)
+            pl_queue.extend(pl_previous_layers)
+            
+        return None
 
 @define
 class PlottingControl:
@@ -68,6 +88,7 @@ class PlottingControl:
     Dataclass representing control variables for plotting the Neural Network
     """
 
+    plotted: List[PlottedLayer] = []
     left_vf: List[PlottedLayer] = []
     right_vf: List[PlottedLayer] = []
     concatenated_vf: List[PlottedLayer] = []
@@ -83,7 +104,6 @@ class PlottingControl:
     plot_connections_left_vf: bool = True  # used in concatenate layer
     vf_top: float = 0
     vf_bottom: float = 0
-    layer_spacing: float = 0.05
     SHOULD_PLOT = {"InputLayer", "Dense", "Concatenate", "Conv2D"}
 
 class NeuralNetworkPlotter:
@@ -168,35 +188,28 @@ class NeuralNetworkPlotter:
         # Determining neural network figure parameters
         CONECTION_OPACITY = 0.2
         COLOR_CONECTION_OPACITY = 0.5
-        left_vf_position = Position(left, 1.5 * middle)  # initial position of left visual field
-        right_vf_position = Position(left, 0.5 * middle)  # initial position of right visual field
+        INITIAL_LEFT_VF_POSITION = Position(left, 1.5 * middle) 
+        INITIAL_RIGHT_VF_POSITION = Position(left, 0.5 * middle)  
         model_number_of_layers = len(model.layers)
 
-        # Plotting layers
+        # Setting up control structure to plot layers
         self.__controller = PlottingControl()
-        self.__controller.vf_top = top
-        self.__controller.vf_bottom = bottom
         for i, (layer, activations) in enumerate(zip(model.layers, model_activations)):
-            plotted_layer = PlottedLayer(layer, activations=activations)
-            if plotted_layer.type not in self.__controller.SHOULD_PLOT: continue # only plots layers that should be plotted or that are supported
+            plotted_layer = PlottedLayer(original_layer=layer, activations=activations)
+            if plotted_layer.type not in self.__controller.SHOULD_PLOT: continue # only plots layers that should be plotted
             # Determining layer characteristics
-            self.__controller.is_left_vf = i % 2 == 0 and not self.__controller.has_concatenated
+            self.__controller.is_left_vf = i % 2 == 0 and not (plotted_layer.is_concatenate_layer or self.__controller.has_concatenated)
+            self.__controller.vf_top = top
+            self.__controller.vf_bottom = bottom
             # Left VF
             if self.__controller.is_left_vf:
-                plotted_layer.position = left_vf_position.copy()
-                self.__controller.reference = self.__controller.left_vf
-                self.__controller.idx = self.__controller.left_idx
-                self.__controller.left_idx += 1
                 self.__controller.vf_bottom = middle + MIDDLE_SPACING
             # Right VF
-            elif not (self.__controller.has_concatenated or plotted_layer.is_concatenate_layer):
-                plotted_layer.position = right_vf_position.copy()
-                self.__controller.reference = self.__controller.right_vf
-                self.__controller.idx = self.__controller.right_idx
-                self.__controller.right_idx += 1
+            elif not (plotted_layer.is_concatenate_layer or self.__controller.has_concatenated):
                 self.__controller.vf_top = middle - MIDDLE_SPACING
             # Input
             if plotted_layer.is_input_layer:
+                plotted_layer.position = INITIAL_LEFT_VF_POSITION if self.__controller.is_left_vf else INITIAL_RIGHT_VF_POSITION
                 ab = self.__generate_image_annotation_box(
                             plotted_layer.activations,
                             plotted_layer.position,
@@ -204,29 +217,50 @@ class NeuralNetworkPlotter:
                             size=self.__calculate_image_size(plotted_layer.num_neurons),
                         )
                 ax.add_artist(ab)
+                self.__controller.plotted.append(plotted_layer)
                 continue
             # Concatenate
             if plotted_layer.is_concatenate_layer:
-                self.__controller.reference = self.__controller.concatenated_vf
-                self.__controller.idx = self.__controller.concat_idx
-                self.__controller.concat_idx += 1
                 self.__controller.has_concatenated = True
-            # Concatenated VF
-            elif self.__controller.has_concatenated:
-                self.__controller.idx = self.__controller.concat_idx
-                self.__controller.concat_idx += 1
             # Output
             if plotted_layer.is_output_layer:
                 output_offset = 0.2
                 self.__controller.vf_top = middle + output_offset
                 self.__controller.vf_bottom = middle - output_offset
+                        
+            # Getting previosuly plotted layer
+            layer_spacing = 0.05 if len(self.__controller.plotted) < 4 else 1.3 / (model_number_of_layers-4) # adjust layer spacing based on current layer
+            previous_layer = plotted_layer.get_previously_plotted_layer(self.__controller.plotted)
+            print(plotted_layer.name, previous_layer.name)
+            plotted_layer.position.x = previous_layer.position.x + layer_spacing
+            plotted_layer.position.y = self.__controller.vf_top
+
+            if plotted_layer.num_neurons <= max_neurons:
+                print(self.__controller.vf_top, self.__controller.vf_bottom)
+                neuron_spacing = (self.__controller.vf_top - self.__controller.vf_bottom) / plotted_layer.num_neurons
+                neuron_position = plotted_layer.position.copy()
+                layer_activations = normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
+                for j, neuron_activation in enumerate(layer_activations):
+                    neuron = PlottedNeuron(neuron_activation, position=neuron_position.copy(), radius=neuron_spacing/4)
+                    plotted_layer.neurons.append(neuron)
+                    neuron_circle = plt.Circle(
+                        xy=(neuron.position.x, neuron.position.y),
+                        radius=neuron.radius,
+                        color=plt.cm.viridis(neuron_activation),
+                        ec="k",
+                    )
+                    ax.add_artist(neuron_circle)
+                    neuron_position.y -= neuron_spacing
+            else:
+                ab = self.__generate_image_annotation_box(
+                            plotted_layer.activations,
+                            plotted_layer.position,
+                            cmap="viridis",
+                            size=self.__calculate_image_size(plotted_layer.num_neurons),
+                        )
+                ax.add_artist(ab)
             
-            self.__controller.reference.append(plotted_layer) # add current layer to plotted layers list for each visual field
-            self.__controller.layer_spacing = 0.05 if i < 2 else max((1.3) / (model_number_of_layers - 4), 0) # adjust layer spacing based on current layer
-            
-            # Plotting neurons and connections
-            
-        
+            self.__controller.plotted.append(plotted_layer) # add current layer to plotted layers list
         plt.show()
 
     def __compute_figure_sizes(self, top: float) -> List[float]:
