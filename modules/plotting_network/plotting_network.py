@@ -44,7 +44,7 @@ class PlottedLayer():
         self.weights = original_layer.get_weights()
         self.activations = activations
         self.position = position if position is not None else Position(0, 0)
-        self.num_neurons = self.__compute_num_neurons(original_layer.output_shape[-1])
+        self.num_neurons = self.__compute_num_neurons(original_layer.output_shape)
         self.neurons = []
         self.type = original_layer.__class__.__name__
         self.is_input_layer = self.type == "InputLayer"
@@ -52,15 +52,17 @@ class PlottedLayer():
         self.is_concatenate_layer = self.type == "Concatenate"
         self.previous_layers = self.__get_previous_layers(original_layer)
 
-    # def __attrs_post_init__(self):
-    #     self.neurons = ([])  # this is needed to fix bug where list is not empty at start
-
     def __str__(self):
         return f"PlottedLayer({self.name}, {self.type}, {self.num_neurons}, is_input={self.is_input_layer}, is_output={self.is_output_layer}, is_concat={self.is_concatenate_layer})"
     
     def __compute_num_neurons(self, num_neurons) -> int:
+        print(f"COMPUTE NUM NEURONS CALLED ON {self.name}")
+        print(num_neurons)
         if (isinstance(num_neurons, Iterable)):
-            return (lambda x, y, z: y * z)(*num_neurons)
+            if len(num_neurons) == 1: num_neurons = num_neurons[0]
+            print([el for el in num_neurons if el is not None])
+            print(int(np.prod([el for el in num_neurons if el is not None])))
+            return int(np.prod([el for el in num_neurons if el is not None]))
         return int(num_neurons)
     
     def __get_previous_layers(self, layer: tf.keras.layers.Layer) -> List[tf.keras.layers.Layer]:
@@ -89,19 +91,8 @@ class PlottingControl:
     """
 
     plotted: List[PlottedLayer] = []
-    left_vf: List[PlottedLayer] = []
-    right_vf: List[PlottedLayer] = []
-    concatenated_vf: List[PlottedLayer] = []
-    reference: Optional[List[PlottedLayer]] = None
     is_left_vf: bool = False
-    idx: int = 0
-    left_idx: int = 0
-    right_idx: int = 0
-    concat_idx: int = 0
-    concat_left_idx: int = 0
-    concat_right_idx: int = 0
     has_concatenated: bool = False
-    plot_connections_left_vf: bool = True  # used in concatenate layer
     vf_top: float = 0
     vf_bottom: float = 0
     SHOULD_PLOT = {"InputLayer", "Dense", "Concatenate", "Conv2D"}
@@ -175,7 +166,7 @@ class NeuralNetworkPlotter:
             save_plot = self.save_plots
 
         # Determining matplotlib figure parameters
-        fig = plt.figure(figsize=(24, 24))
+        fig = plt.figure(figsize=(48, 24))
         ax = fig.gca()
         ax.axis("off")
         top, bottom, left, right = self.__compute_figure_sizes(top=0.98)
@@ -235,6 +226,7 @@ class NeuralNetworkPlotter:
             plotted_layer.position.x = previous_layer.position.x + layer_spacing
             plotted_layer.position.y = self.__controller.vf_top
 
+            print(plotted_layer.num_neurons, max_neurons)
             if plotted_layer.num_neurons <= max_neurons:
                 print(self.__controller.vf_top, self.__controller.vf_bottom)
                 neuron_spacing = (self.__controller.vf_top - self.__controller.vf_bottom) / plotted_layer.num_neurons
@@ -255,7 +247,7 @@ class NeuralNetworkPlotter:
                 ab = self.__generate_image_annotation_box(
                             plotted_layer.activations,
                             plotted_layer.position,
-                            cmap="viridis",
+                            cmap="binary",
                             size=self.__calculate_image_size(plotted_layer.num_neurons),
                         )
                 ax.add_artist(ab)
