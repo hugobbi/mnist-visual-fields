@@ -41,7 +41,7 @@ class PlottedLayer():
     def __init__(self, original_layer: tf.keras.layers.Layer, activations: Optional[List[float]] = None, position:  Optional[Position] = None):
         # Copying necessary attributes from original layer
         self.name = original_layer.name
-        self.weights = original_layer.get_weights()
+        self.weights, self.biases = original_layer.get_weights() if original_layer.get_weights() else (None, None)
         self.activations = activations
         self.position = position if position is not None else Position(0, 0)
         self.num_neurons = self.__compute_num_neurons(original_layer.output_shape)
@@ -56,12 +56,8 @@ class PlottedLayer():
         return f"PlottedLayer({self.name}, {self.type}, {self.num_neurons}, is_input={self.is_input_layer}, is_output={self.is_output_layer}, is_concat={self.is_concatenate_layer})"
     
     def __compute_num_neurons(self, num_neurons) -> int:
-        print(f"COMPUTE NUM NEURONS CALLED ON {self.name}")
-        print(num_neurons)
         if (isinstance(num_neurons, Iterable)):
             if len(num_neurons) == 1: num_neurons = num_neurons[0]
-            print([el for el in num_neurons if el is not None])
-            print(int(np.prod([el for el in num_neurons if el is not None])))
             return int(np.prod([el for el in num_neurons if el is not None]))
         return int(num_neurons)
     
@@ -75,7 +71,6 @@ class PlottedLayer():
         pl_queue = self.previous_layers
         while pl_queue:
             pl = pl_queue.pop(0)
-            #print(pl.name, set(map(lambda plt_layer: plt_layer.name, plotted_layers)))
             for plt_layer in plotted_layers:
                 if plt_layer.name == pl.name:
                     return plt_layer
@@ -102,7 +97,7 @@ class NeuralNetworkPlotter:
             self, 
             model: tf.keras.Model, 
             max_neurons: int = 300,
-            weight_threshold: float = 0.5,
+            weight_threshold: float = 0.75,
             attribute_lenses: Optional[List[tf.keras.Model]] = None,
             num_attr_lenses_top_activations: int = 3,
             save_plots: bool = True,
@@ -166,8 +161,7 @@ class NeuralNetworkPlotter:
             save_plot = self.save_plots
 
         # Determining matplotlib figure parameters
-        fig = plt.figure(figsize=(48, 24))
-        ax = fig.gca()
+        fig, ax = plt.subplots(figsize=(32, 32))
         ax.axis("off")
         top, bottom, left, right = self.__compute_figure_sizes(top=0.98)
         middle = round((top + bottom) / 2, ndigits=4)
@@ -179,9 +173,13 @@ class NeuralNetworkPlotter:
         # Determining neural network figure parameters
         CONECTION_OPACITY = 0.2
         COLOR_CONECTION_OPACITY = 0.5
+        TEXT_X_OFFSET, TEXT_Y_OFFSET = 0.005, 0.003
+        LAYER_SPACING_NO_WEIGHTS = 0.1
+        LEFT_VF_MIDDLE = 1.5 * middle
+        RIGHT_VF_MIDDLE = 0.5 * middle
         INITIAL_LEFT_VF_POSITION = Position(left, 1.5 * middle) 
         INITIAL_RIGHT_VF_POSITION = Position(left, 0.5 * middle)  
-        model_number_of_layers = len(model.layers)
+        total_layer_spaces = self.__compute_total_layer_spaces()
 
         # Setting up control structure to plot layers
         self.__controller = PlottingControl()
@@ -210,25 +208,33 @@ class NeuralNetworkPlotter:
                 ax.add_artist(ab)
                 self.__controller.plotted.append(plotted_layer)
                 continue
+            # Conv2D
+            if plotted_layer.type == "Conv2D":
+                if self.__controller.has_concatenated:
+                    plotted_layer.position.y = middle
+                else:
+                    plotted_layer.position.y = LEFT_VF_MIDDLE if self.__controller.is_left_vf else RIGHT_VF_MIDDLE
             # Concatenate
             if plotted_layer.is_concatenate_layer:
                 self.__controller.has_concatenated = True
             # Output
             if plotted_layer.is_output_layer:
-                output_offset = 0.2
-                self.__controller.vf_top = middle + output_offset
-                self.__controller.vf_bottom = middle - output_offset
+                OUTPUT_OFFSET = 0.2
+                self.__controller.vf_top = middle + OUTPUT_OFFSET
+                self.__controller.vf_bottom = middle - OUTPUT_OFFSET
                         
-            # Getting previosuly plotted layer
-            layer_spacing = 0.05 if len(self.__controller.plotted) < 4 else 1.3 / (model_number_of_layers-4) # adjust layer spacing based on current layer
+            # Getting previously plotted layer
             previous_layer = plotted_layer.get_previously_plotted_layer(self.__controller.plotted)
-            print(plotted_layer.name, previous_layer.name)
+            should_plot_weights = plotted_layer.num_neurons <= max_neurons and previous_layer.num_neurons <= max_neurons and not plotted_layer.is_concatenate_layer
+            
+            # Determining layer spacing and layer position
+            layer_spacing = (right - left - TEXT_X_OFFSET) / total_layer_spaces if should_plot_weights else LAYER_SPACING_NO_WEIGHTS
             plotted_layer.position.x = previous_layer.position.x + layer_spacing
-            plotted_layer.position.y = self.__controller.vf_top
 
-            print(plotted_layer.num_neurons, max_neurons)
+            # Plotting neurons and weights
             if plotted_layer.num_neurons <= max_neurons:
-                print(self.__controller.vf_top, self.__controller.vf_bottom)
+                # Plotting neurons
+                plotted_layer.position.y = self.__controller.vf_top
                 neuron_spacing = (self.__controller.vf_top - self.__controller.vf_bottom) / plotted_layer.num_neurons
                 neuron_position = plotted_layer.position.copy()
                 layer_activations = normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
@@ -243,6 +249,23 @@ class NeuralNetworkPlotter:
                     )
                     ax.add_artist(neuron_circle)
                     neuron_position.y -= neuron_spacing
+                    # Plotting neuron acitavtion value of output neurons
+                    if plotted_layer.is_output_layer:
+                        digit = j + 1
+                        ax.text(neuron.position.x + neuron.radius + TEXT_X_OFFSET, neuron.position.y - TEXT_Y_OFFSET, f"{digit}: {neuron_activation:.4f}", fontsize=12, fontweight="bold")
+                    # Plotting weights
+                    if should_plot_weights:
+                        layer_weights_neuron = normalize_ndarray(plotted_layer.weights[:, j])
+                        for previous_neuron, connection_weight in zip(previous_layer.neurons, layer_weights_neuron):
+                            if connection_weight < weight_threshold: continue
+                            connection = plt.Line2D(
+                                [neuron.position.x - neuron.radius, 
+                                 previous_neuron.position.x + previous_neuron.radius],
+                                [neuron.position.y, previous_neuron.position.y],
+                                color=plt.cm.viridis(connection_weight),
+                                alpha=COLOR_CONECTION_OPACITY
+                            )
+                            ax.add_artist(connection)
             else:
                 ab = self.__generate_image_annotation_box(
                             plotted_layer.activations,
@@ -308,7 +331,22 @@ class NeuralNetworkPlotter:
         a = -5/1536
         b = 533/96
         return number_neurons * a + b
-
+    
+    def __compute_total_layer_spaces(self) -> int:
+        """
+        Computes the total number of layer spaces a neural network plot will have
+        """
+        i, j = 0, 0
+        has_concatenated = False
+        for layer in self.model.layers:
+            if layer.__class__.__name__ not in PlottingControl.SHOULD_PLOT: continue    
+            i += 1
+            if not has_concatenated:
+                j += 1
+                if layer.__class__.__name__ == "Concatenate": has_concatenated = True
+        
+        return int(i - j // 2) - 1
+    
     def generate_output_models(self, model: Optional[tf.keras.Model] = None) -> List[tf.keras.Model]:
         """
         Generates output models for each hidden layer of the model
