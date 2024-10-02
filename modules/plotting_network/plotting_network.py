@@ -14,8 +14,8 @@ class Position:
     Dataclass representing a position with two coordinates
     """
 
-    x: float
-    y: float
+    x: float = 0
+    y: float = 0
 
     def copy(self):
         return Position(self.x, self.y)
@@ -29,9 +29,10 @@ class PlottedNeuron:
     Dataclass representing a neuron in the Neural Network plot
     """
 
-    activation: float
-    position: Position
-    radius: float
+    activation: float = 0
+    position: Position = Position()
+    radius: float = 0
+    spacing: float = 0
 
 class PlottedLayer():
     """
@@ -173,13 +174,14 @@ class NeuralNetworkPlotter:
         # Determining neural network figure parameters
         CONECTION_OPACITY = 0.2
         COLOR_CONECTION_OPACITY = 0.5
+        IMAGE_OFFSET = 0.025
         TEXT_X_OFFSET, TEXT_Y_OFFSET = 0.005, 0.003
         LAYER_SPACING_NO_WEIGHTS = 0.1
         LEFT_VF_MIDDLE = 1.5 * middle
         RIGHT_VF_MIDDLE = 0.5 * middle
         INITIAL_LEFT_VF_POSITION = Position(left, 1.5 * middle) 
         INITIAL_RIGHT_VF_POSITION = Position(left, 0.5 * middle)  
-        total_layer_spaces = self.__compute_total_layer_spaces()
+        TOTAL_LAYER_SPACES = self.__compute_total_layer_spaces()
 
         # Setting up control structure to plot layers
         self.__controller = PlottingControl()
@@ -228,7 +230,7 @@ class NeuralNetworkPlotter:
             should_plot_weights = plotted_layer.num_neurons <= max_neurons and previous_layer.num_neurons <= max_neurons and not plotted_layer.is_concatenate_layer
             
             # Determining layer spacing and layer position
-            layer_spacing = (right - left - TEXT_X_OFFSET) / total_layer_spaces if should_plot_weights else LAYER_SPACING_NO_WEIGHTS
+            layer_spacing = (right - left - TEXT_X_OFFSET) / TOTAL_LAYER_SPACES if should_plot_weights else LAYER_SPACING_NO_WEIGHTS
             plotted_layer.position.x = previous_layer.position.x + layer_spacing
 
             # Plotting neurons and weights
@@ -239,7 +241,7 @@ class NeuralNetworkPlotter:
                 neuron_position = plotted_layer.position.copy()
                 layer_activations = normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
                 for j, neuron_activation in enumerate(layer_activations):
-                    neuron = PlottedNeuron(neuron_activation, position=neuron_position.copy(), radius=neuron_spacing/4)
+                    neuron = PlottedNeuron(neuron_activation, position=neuron_position.copy(), radius=neuron_spacing/4, spacing=neuron_spacing)
                     plotted_layer.neurons.append(neuron)
                     neuron_circle = plt.Circle(
                         xy=(neuron.position.x, neuron.position.y),
@@ -266,6 +268,29 @@ class NeuralNetworkPlotter:
                                 alpha=COLOR_CONECTION_OPACITY
                             )
                             ax.add_artist(connection)
+                    # Plotting symbolic connectios to previous layer
+                    elif not plotted_layer.is_concatenate_layer:
+                        connection = plt.Line2D(
+                            [neuron.position.x - neuron.radius, 
+                                previous_layer.position.x + IMAGE_OFFSET],
+                            [neuron.position.y, previous_layer.position.y],
+                            color='black',
+                            alpha=CONECTION_OPACITY
+                        )
+                        ax.add_artist(connection)
+                    # Plotting symbolic concatenate connecitons
+                    else:
+                        middle_spacing = 0 if j < plotted_layer.num_neurons // 2 else 2 * MIDDLE_SPACING
+                        previous_radius = previous_layer.neurons[0].radius
+                        previous_spacing = previous_layer.neurons[0].spacing
+                        connection = plt.Line2D(
+                            [neuron.position.x - neuron.radius, 
+                                previous_layer.position.x + previous_radius],
+                            [neuron.position.y, previous_layer.position.y - (j * (previous_spacing) + middle_spacing)],
+                            color='black',
+                            alpha=CONECTION_OPACITY
+                        )
+                        ax.add_artist(connection)
             else:
                 ab = self.__generate_image_annotation_box(
                             plotted_layer.activations,
