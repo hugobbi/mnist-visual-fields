@@ -174,7 +174,7 @@ class NeuralNetworkPlotter:
         # Determining neural network figure parameters
         CONECTION_OPACITY = 0.2
         COLOR_CONECTION_OPACITY = 0.5
-        IMAGE_OFFSET = 0.025
+        IMAGE_OFFSET = 0.024
         TEXT_X_OFFSET, TEXT_Y_OFFSET = 0.005, 0.003
         LAYER_SPACING_NO_WEIGHTS = 0.1
         LEFT_VF_MIDDLE = 1.5 * middle
@@ -268,7 +268,7 @@ class NeuralNetworkPlotter:
                                 alpha=COLOR_CONECTION_OPACITY
                             )
                             ax.add_artist(connection)
-                    # Plotting symbolic connectios to previous layer
+                    # Plotting symbolic connections from current layer to previous layer
                     elif not plotted_layer.is_concatenate_layer:
                         connection = plt.Line2D(
                             [neuron.position.x - neuron.radius, 
@@ -292,6 +292,7 @@ class NeuralNetworkPlotter:
                         )
                         ax.add_artist(connection)
             else:
+                # Plotting layer as image
                 ab = self.__generate_image_annotation_box(
                             plotted_layer.activations,
                             plotted_layer.position,
@@ -299,8 +300,39 @@ class NeuralNetworkPlotter:
                             size=self.__calculate_image_size(plotted_layer.num_neurons),
                         )
                 ax.add_artist(ab)
-            
+                # Plotting symbolic connections from image to previous layer
+                if previous_layer.num_neurons <= max_neurons:
+                    for previous_neuron in previous_layer.neurons:
+                        connection = plt.Line2D(
+                            [plotted_layer.position.x - IMAGE_OFFSET, 
+                                previous_neuron.position.x + previous_neuron.radius],
+                            [plotted_layer.position.y, previous_neuron.position.y],
+                            color='black',
+                            alpha=CONECTION_OPACITY
+                        )
+                        ax.add_artist(connection)
+                else:
+                    # Plotting two symbolic connections on each side of the image
+                    for l in range(2):
+                        connection = plt.Line2D(
+                            [plotted_layer.position.x - IMAGE_OFFSET, 
+                                previous_layer.position.x + IMAGE_OFFSET],
+                            [plotted_layer.position.y + IMAGE_OFFSET*(1-2*l), previous_layer.position.y],
+                            color='black',
+                            alpha=CONECTION_OPACITY
+                        )
+                        ax.add_artist(connection)
+                        
             self.__controller.plotted.append(plotted_layer) # add current layer to plotted layers list
+            
+            # Plotting attribute lenses
+        
+        # Saving plot
+        if save_plot:
+            save_dir = "results/images/"
+            os.makedirs(save_dir, exist_ok=True)
+            plt.savefig(f"{save_dir}/NN_PLOT_{get_current_time_string()}.png")  
+
         plt.show()
 
     def __compute_figure_sizes(self, top: float) -> List[float]:
