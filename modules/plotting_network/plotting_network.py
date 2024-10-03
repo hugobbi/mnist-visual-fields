@@ -5,7 +5,7 @@ import os
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from typing import List, Tuple, Optional, Set
 from attr import define
-from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts
+from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts, is_double_visual_field_model
 from collections.abc import Iterable
 
 @define
@@ -326,6 +326,8 @@ class NeuralNetworkPlotter:
             self.__controller.plotted.append(plotted_layer) # add current layer to plotted layers list
             
             # Plotting attribute lenses
+            if attribute_lenses is not None:
+                pass
         
         # Saving plot
         if save_plot:
@@ -403,6 +405,32 @@ class NeuralNetworkPlotter:
                 if layer.__class__.__name__ == "Concatenate": has_concatenated = True
         
         return int(i - j // 2) - 1
+
+    def generate_attribute_lenses(self, model: Optional[tf.keras.Model] = None) -> List[tf.keras.Model]:
+        """
+        Generates attribute lenses for each hidden layer of the model
+        """
+        if model is None:
+            model = self.model
+        NOT_ATTRIBUTE_LENSES = {"InputLayer", "Flatten"}
+        
+        # Copying original model and freezing weigths
+        model_copy = tf.keras.models.clone_model(model)
+        model_weights = model.get_weights()
+        model_copy.set_weights(model_weights)
+        for layer in model_copy.layers: layer.trainable = False
+
+        # Generating attribute lenses for each hidden layer
+        attribute_lenses = []
+        for i, layer in enumerate(model_copy.layers):
+            if layer.__class__.__name__ in NOT_ATTRIBUTE_LENSES: continue
+            output = tf.keras.layers.Dense(10, activation="softmax")(layer.output)
+            attribute_lens = tf.keras.models.Model(
+                inputs=model_copy.input, outputs=output
+            )
+            attribute_lenses.append(attribute_lens)
+        
+        return attribute_lenses
     
     def generate_output_models(self, model: Optional[tf.keras.Model] = None) -> List[tf.keras.Model]:
         """
