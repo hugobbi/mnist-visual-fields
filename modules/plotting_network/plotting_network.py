@@ -253,8 +253,7 @@ class NeuralNetworkPlotter:
                     neuron_position.y -= neuron_spacing
                     # Plotting neuron acitavtion value of output neurons
                     if plotted_layer.is_output_layer:
-                        digit = j + 1
-                        ax.text(neuron.position.x + neuron.radius + TEXT_X_OFFSET, neuron.position.y - TEXT_Y_OFFSET, f"{digit}: {neuron_activation:.4f}", fontsize=12, fontweight="bold")
+                        ax.text(neuron.position.x + neuron.radius + TEXT_X_OFFSET, neuron.position.y - TEXT_Y_OFFSET, f"{j}: {neuron_activation:.4f}", fontsize=12, fontweight="bold")
                     # Plotting weights
                     if should_plot_weights:
                         layer_weights_neuron = normalize_ndarray(plotted_layer.weights[:, j])
@@ -327,7 +326,29 @@ class NeuralNetworkPlotter:
             
             # Plotting attribute lenses
             if attribute_lenses is not None:
-                pass
+                if i >= len(attribute_lenses): continue
+                attribute_lens = attribute_lenses[i]
+                digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data, right_vf_data)
+                al_text_string = ''
+                for k in range(num_attr_lenses_top_activations):
+                    eol = '\n' if k != num_attr_lenses_top_activations - 1 else ''
+                    al_text_string += f'{digit_activations[k][0]}: {digit_activations[k][1]:.4f}{eol}'
+                if layer.num_neurons <= max_neurons:
+                    al_text_position = plotted_layer.neurons[-1].position.copy()
+                else:
+                    al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y + IMAGE_OFFSET)
+                AL_TEXT_X_OFFSET = -0.03
+                AL_TEXT_Y_OFFSET = 0.02
+                al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y)
+                text = plt.Text(
+                    al_text_position.x + neuron.radius + AL_TEXT_X_OFFSET,
+                    al_text_position.y - AL_TEXT_Y_OFFSET,
+                    al_text_string,
+                    fontsize=12,
+                    fontweight='bold',
+                    color="k",
+                )
+                ax.add_artist(text)
         
         # Saving plot
         if save_plot:
@@ -413,6 +434,8 @@ class NeuralNetworkPlotter:
         if model is None:
             model = self.model
         NOT_ATTRIBUTE_LENSES = {"InputLayer", "Flatten"}
+        has_concatenated = False
+        is_svf = not is_double_visual_field_model(model)
         
         # Copying original model and freezing weigths
         model_copy = tf.keras.models.clone_model(model)
@@ -422,43 +445,31 @@ class NeuralNetworkPlotter:
 
         # Generating attribute lenses for each hidden layer
         attribute_lenses = []
-        for i, layer in enumerate(model_copy.layers):
+        for i, layer in enumerate(model_copy.layers[:-2]): # excluding output layer and last hidden layer
+            # Layer type controller
+            is_conv_layer = False
             if layer.__class__.__name__ in NOT_ATTRIBUTE_LENSES: continue
-            output = tf.keras.layers.Dense(10, activation="softmax")(layer.output)
+            if layer.__class__.__name__ == "Conv2D": is_conv_layer = True
+            if layer.__class__.__name__ == "Concatenate": has_concatenated = True
+            
+            # Determining input layer
+            if has_concatenated or is_svf:
+                input_layer = model_copy.input
+            else:
+                input_layer = model_copy.input[0] if i % 2 == 0 else model_copy.input[1] # left or right input
+            
+            # Determining output layer
+            if is_conv_layer:
+                flatten = tf.keras.layers.Flatten()(layer.output)
+                output = tf.keras.layers.Dense(10, activation="softmax")(flatten)
+            else:
+                output = tf.keras.layers.Dense(10, activation="softmax")(layer.output)
+            
+            # Creating model
             attribute_lens = tf.keras.models.Model(
-                inputs=model_copy.input, outputs=output
+                inputs=input_layer, outputs=output
             )
             attribute_lenses.append(attribute_lens)
         
+        self.attribute_lenses = attribute_lenses
         return attribute_lenses
-    
-    def generate_output_models(self, model: Optional[tf.keras.Model] = None) -> List[tf.keras.Model]:
-        """
-        Generates output models for each hidden layer of the model
-        """
-        if model is None:
-            model = self.model
-        
-        # Generate not trainable copy of model
-        model_copy = tf.keras.models.clone_model(model)
-        model_weights = model.get_weights()
-        model_copy.set_weights(model_weights)
-        for layer in model_copy.layers:
-            layer.trainable = False 
-        
-        # Generate output models of each hidden layer
-        output_models = []
-        for layer in model_copy.layers[4:-2]:
-            out_model_input = model_copy.input # [left_input, right_input]
-            if 'left' in layer.name:
-                out_model_input = out_model_input[0]
-            elif 'right' in layer.name:
-                out_model_input = out_model_input[1]
-                
-            out_model_output = tf.keras.layers.Dense(10, activation="softmax")(layer.output)
-            out_model = tf.keras.models.Model(
-            inputs=out_model_input, outputs=out_model_output
-            )
-            output_models.append(out_model)
-
-        return output_models
