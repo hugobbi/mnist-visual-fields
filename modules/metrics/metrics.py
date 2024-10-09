@@ -4,7 +4,7 @@ import os
 import re
 from typing import Tuple, List, Generator, Dict, Optional
 from multiprocessing import Pool
-from modules.utils.utils import get_n_digits_indices, compute_activations, compute_forward_pass, compute_mean_dynamically, is_double_visual_field_model, compute_cosine_similarity, is_left_visual_field_layer
+from modules.utils.utils import get_n_digits_indices, compute_activations, compute_forward_pass, compute_mean_dynamically, is_dvf_model, compute_cosine_similarity, is_left_visual_field_layer
 import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from IPython.display import display
@@ -49,7 +49,7 @@ def generate_prototypes(model: tf.keras.Model, x_data: np.array, y_data: np.arra
     
     prototypes = {}
     digit_instances_generator = (get_n_digits_indices(y_data, d, n) for d in range(10))
-    is_drf_model = is_double_visual_field_model(model)
+    is_drf_model = is_dvf_model(model)
     args = args_generator(is_drf_model, x_data, digit_instances_generator, n)
     for (data, (d, i, input_type)) in args:
         match input_type:
@@ -112,7 +112,7 @@ def generate_prototypes_mp(model: tf.keras.Model, x_data: np.array, y_data: np.a
 
     prototypes = {}
     digit_instances_generator = (get_n_digits_indices(y_data, d, n) for d in range(10))
-    is_drf_model = is_double_visual_field_model(model)
+    is_drf_model = is_dvf_model(model)
     args_len = 20*n if is_drf_model else 10*n
 
     # Model needs to be global in order for multiprocessing to work (loading model from file is causing deadlock)
@@ -256,7 +256,7 @@ def compute_cosine_similarity_matrix(model: tf.keras.Model, prototypes: Dict[str
     Output:
     List[np.array]: list containing the cosine similarity matrix for each layer of the model
     """
-    is_drf_model = is_double_visual_field_model(model)
+    is_drf_model = is_dvf_model(model)
     is_drf_layer = False
     cs_matrices = {}
     for i, layer in enumerate(model.layers):

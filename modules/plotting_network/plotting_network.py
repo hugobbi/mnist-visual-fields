@@ -5,7 +5,8 @@ import os
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from typing import List, Tuple, Optional, Set
 from attr import define
-from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts, is_double_visual_field_model
+from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts, is_dvf_model, data_generator_dvf, data_generator_svf
+from modules.dataset.dataset import Dataset
 from collections.abc import Iterable
 
 @define
@@ -93,6 +94,19 @@ class PlottingControl:
     vf_bottom: float = 0
     SHOULD_PLOT = {"InputLayer", "Dense", "Concatenate", "Conv2D"}
 
+class AccuracyLogging(tf.keras.callbacks.Callback):
+    """
+    Callback class to log the accuracy of the attribute lenses during training
+    """
+    
+    def __init__(self, plotter: "NeuralNetworkPlotter", attribute_lens_name: str) -> None:
+        super(AccuracyLogging, self).__init__()
+        self.plotter = plotter
+        self.attribute_lens_name = attribute_lens_name
+    
+    def on_epoch_end(self, epoch, logs=None):
+        self.plotter.attribute_lenses_accuracy.setdefault(self.attribute_lens_name, []).append(logs["accuracy"])
+
 class NeuralNetworkPlotter:
     def __init__(
             self, 
@@ -108,15 +122,11 @@ class NeuralNetworkPlotter:
         self.max_neurons = max_neurons
         self.weight_threshold = weight_threshold
         self.attribute_lenses = attribute_lenses
+        self.attribute_lenses_accuracy = {}
         self.num_attr_lenses_top_activations = num_attr_lenses_top_activations
         self.save_plots = save_plots
         self.__controller = None
 
-    # Single visual field plot function
-    def plot(self, data: np.array) -> None:
-        pass
-
-    # Double visual field plot function
     def plot(self, 
              left_vf_data: np.array, 
              right_vf_data: np.array,
@@ -435,7 +445,7 @@ class NeuralNetworkPlotter:
             model = self.model
         NOT_ATTRIBUTE_LENSES = {"InputLayer", "Flatten"}
         has_concatenated = False
-        is_svf = not is_double_visual_field_model(model)
+        is_svf = not is_dvf_model(model)
         
         # Copying original model and freezing weigths
         model_copy = tf.keras.models.clone_model(model)
@@ -473,3 +483,38 @@ class NeuralNetworkPlotter:
         
         self.attribute_lenses = attribute_lenses
         return attribute_lenses
+
+    def train_attribute_lenses(self, dataset: Dataset, epochs: int, batch_size: int):
+        """
+        Trains attribute lenses for each hidden layer of the model
+        """
+        if self.attribute_lenses is None:
+            raise ValueError("Attribute lenses have not been generated yet")
+        for al in self.attribute_lenses:
+            if is_dvf_model(al):
+                training_generator = data_generator_dvf(
+                    dataset.train_vf.x_left, dataset.train_vf.x_right, dataset.train_vf.y, batch_size
+                )
+                testing_generator = data_generator_dvf(
+                    dataset.test_vf.x_left, dataset.test_vf.x_right, dataset.test_vf.y, batch_size
+                )
+            else:
+                training_generator = data_generator_svf(
+                    dataset.train.x, dataset.train.y, batch_size
+                )
+                testing_generator = data_generator_svf(
+                    dataset.test.x, dataset.test.y, batch_size
+                )
+            al.compile(
+                loss="sparse_categorical_crossentropy",
+                optimizer=tf.keras.optimizers.Adam(),
+                metrics=["accuracy"],
+            )
+            al.fit(
+                training_generator,
+                steps_per_epoch=len(dataset.train_vf.y) // batch_size,
+                epochs=epochs,
+                callbacks=[AccuracyLogging(self, al.name)],
+                # validation_data=testing_generator,
+                # validation_steps=len(y_test_final) // batch_size
+            )
