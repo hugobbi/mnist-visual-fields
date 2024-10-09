@@ -138,11 +138,11 @@ def plot_loss_accuracy(history):
     plt.legend()
     plt.show()
 
-def is_double_visual_field_model(model):
+def is_dvf_model(model):
     return type(model.input) == list # If input is a list, it is a double visual field model
 
 def is_left_visual_field_model(model):
-    return not is_double_visual_field_model(model) and 'left' in model.input.name
+    return not is_dvf_model(model) and 'left' in model.input.name
 
 def show_dataset_sizes(*data):
     for d in data:
@@ -337,3 +337,19 @@ def compute_mean_dynamically(mean_list: List[np.array], new_list: List[np.array]
         new_mean_list.append(mean)
 
     return new_mean_list
+
+def data_generator_dvf(x_data_left, x_data_right, y_data, batch_size):
+    """
+    Used to generate batches of data for a double visual field model training or testing
+    """
+    while True:
+        for i in range(0, len(y_data), batch_size):
+            yield [x_data_left[i:i+batch_size], x_data_right[i:i+batch_size]], y_data[i:i+batch_size]
+
+def data_generator_svf(x_data, y_data, batch_size):
+    """
+    Used to generate batches of data for a single visual field model training or testing
+    """
+    while True:
+        for i in range(0, len(y_data), batch_size):
+            yield x_data[i:i+batch_size], y_data[i:i+batch_size]
