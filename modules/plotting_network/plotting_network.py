@@ -336,14 +336,21 @@ class NeuralNetworkPlotter:
             
             # Plotting attribute lenses
             if attribute_lenses is not None:
+                print(i, len(attribute_lenses))
                 if i >= len(attribute_lenses): continue
-                attribute_lens = attribute_lenses[i]
-                digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data, right_vf_data)
+                attribute_lens = self.__get_attribute_lens(plotted_layer)
+                if is_dvf_model(attribute_lens):
+                    digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data, right_vf_data)
+                else:
+                    if self.__controller.is_left_vf:
+                        digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data)
+                    else:
+                        digit_activations = compute_digits_model_predicts(attribute_lens, right_vf_data)
                 al_text_string = ''
                 for k in range(num_attr_lenses_top_activations):
                     eol = '\n' if k != num_attr_lenses_top_activations - 1 else ''
                     al_text_string += f'{digit_activations[k][0]}: {digit_activations[k][1]:.4f}{eol}'
-                if layer.num_neurons <= max_neurons:
+                if plotted_layer.num_neurons <= max_neurons:
                     al_text_position = plotted_layer.neurons[-1].position.copy()
                 else:
                     al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y + IMAGE_OFFSET)
@@ -351,7 +358,7 @@ class NeuralNetworkPlotter:
                 AL_TEXT_Y_OFFSET = 0.02
                 al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y)
                 text = plt.Text(
-                    al_text_position.x + neuron.radius + AL_TEXT_X_OFFSET,
+                    al_text_position.x + AL_TEXT_X_OFFSET,
                     al_text_position.y - AL_TEXT_Y_OFFSET,
                     al_text_string,
                     fontsize=12,
@@ -437,6 +444,11 @@ class NeuralNetworkPlotter:
         
         return int(i - j // 2) - 1
 
+    def __get_attribute_lens(self, plotted_layer: PlottedLayer) -> tf.keras.Model:
+        # match second to last layer of attribute lenses to plotted layer name
+        # and return match
+        return
+    
     def generate_attribute_lenses(self, model: Optional[tf.keras.Model] = None) -> List[tf.keras.Model]:
         """
         Generates attribute lenses for each hidden layer of the model
@@ -484,7 +496,14 @@ class NeuralNetworkPlotter:
         self.attribute_lenses = attribute_lenses
         return attribute_lenses
 
-    def train_attribute_lenses(self, dataset: Dataset, epochs: int, batch_size: int):
+    def train_attribute_lenses(
+            self, 
+            dataset: Dataset, 
+            epochs: int, 
+            batch_size: int,
+            loss: str = "sparse_categorical_crossentropy",
+            optimizer: str = "adam",
+            metrics: List[str] = ["accuracy"]) -> None:
         """
         Trains attribute lenses for each hidden layer of the model
         """
@@ -506,15 +525,15 @@ class NeuralNetworkPlotter:
                     dataset.test.x, dataset.test.y, batch_size
                 )
             al.compile(
-                loss="sparse_categorical_crossentropy",
-                optimizer=tf.keras.optimizers.Adam(),
-                metrics=["accuracy"],
+                loss=loss,
+                optimizer=optimizer, 
+                metrics=metrics,
             )
             al.fit(
                 training_generator,
                 steps_per_epoch=len(dataset.train_vf.y) // batch_size,
                 epochs=epochs,
                 callbacks=[AccuracyLogging(self, al.name)],
-                # validation_data=testing_generator,
-                # validation_steps=len(y_test_final) // batch_size
+                validation_data=testing_generator,
+                validation_steps=len(dataset.test_vf.y) // batch_size
             )
