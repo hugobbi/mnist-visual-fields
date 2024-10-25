@@ -52,6 +52,7 @@ class PlottedLayer():
         self.is_input_layer = self.type == "InputLayer"
         self.is_output_layer = not bool(original_layer._outbound_nodes)
         self.is_concatenate_layer = self.type == "Concatenate"
+        self.is_conv_layer = self.type == "Conv2D"
         self.previous_layers = self.__get_previous_layers(original_layer)
 
     def __str__(self):
@@ -93,8 +94,14 @@ class PlottingControl:
     is_center_vf: bool = False
     has_concatenated: bool = False
     vf_top: float = 0
+    vf_center: float = 0
     vf_bottom: float = 0
+    using_two_columns: bool = False
     SHOULD_PLOT = {"InputLayer", "Dense", "Concatenate", "Conv2D"}
+
+    @property
+    def vf_size(self) -> float:
+        return self.vf_top - self.vf_bottom
 
 class AccuracyLogging(tf.keras.callbacks.Callback):
     """
@@ -140,7 +147,7 @@ class NeuralNetworkPlotter:
              weight_threshold: Optional[float] = None,
              attribute_lenses: Optional[List[tf.keras.Model]] = None,
              num_attr_lenses_top_activations: Optional[int] = None,
-             save_plot: Optional[bool] = None) -> None:
+             save_plots: Optional[bool] = None) -> None:
         
         """
         Receives a trained model and an input, displaying the entire neural network with its
@@ -170,15 +177,14 @@ class NeuralNetworkPlotter:
             self.attribute_lenses = attribute_lenses
         if num_attr_lenses_top_activations is not None:
             self.num_attr_lenses_top_activations = num_attr_lenses_top_activations
-        if save_plot is not None:
-            self.save_plots = save_plot
+        if save_plots is not None:
+            self.save_plots = save_plots
 
         # Determining matplotlib figure parameters
         fig, ax = plt.subplots(figsize=(32, 32))
         ax.axis("off")
         top, bottom, left, right = self.__compute_figure_sizes(top=0.98)
         middle = round((top + bottom) / 2, ndigits=4)
-        MIDDLE_SPACING = 0.02
 
         # Calculating activations
         if self.is_dvf_plot:
@@ -189,6 +195,7 @@ class NeuralNetworkPlotter:
             model_activations = compute_activations(self.model, input_data)
 
         # Determining neural network figure parameters
+        MIDDLE_SPACING = 0.02
         TOTAL_LAYER_SPACES = self.__compute_total_layer_spaces()
         CONECTION_OPACITY = 0.2
         COLOR_CONECTION_OPACITY = 0.5
@@ -197,35 +204,38 @@ class NeuralNetworkPlotter:
         LAYER_SPACING_NO_WEIGHTS = 0.1
         LEFT_VF_MIDDLE = 1.5 * middle
         RIGHT_VF_MIDDLE = 0.5 * middle
-        INITIAL_LEFT_VF_POSITION = Position(left, 1.5 * middle) 
-        INITIAL_RIGHT_VF_POSITION = Position(left, 0.5 * middle)  
+        INITIAL_LEFT_VF_POSITION = Position(left, LEFT_VF_MIDDLE) 
+        INITIAL_RIGHT_VF_POSITION = Position(left, RIGHT_VF_MIDDLE)  
         INITIAL_CENTER_VF_POSITION = Position(left, middle)  
         AL_TEXT_X_OFFSET = -0.02
+        AL_TEXT_X_OFFSET_COLUMNS = -0.05
         AL_TEXT_Y_OFFSET = 0.0325
+        OUTPUT_OFFSET = 0.2
 
         # Setting up control structure to plot layers
         self.__controller = PlottingControl()
         for i, (layer, activations) in enumerate(zip(self.model.layers, model_activations)):
-            # if 5 <= i <= 6: continue
-            print(f"Verificando camada {layer.name}")
             plotted_layer = PlottedLayer(original_layer=layer, activations=activations)
             if plotted_layer.type not in self.__controller.SHOULD_PLOT: continue # only plots layers that should be plotted
             # Determining layer characteristics
-            self.__controller.is_center_vf = plotted_layer.is_concatenate_layer or self.__controller.has_concatenated or not is_dvf_plot
+            self.__controller.is_center_vf = plotted_layer.is_concatenate_layer or self.__controller.has_concatenated or not self.is_dvf_plot
             self.__controller.is_left_vf = not self.__controller.is_center_vf and i % 2 == 0
             self.__controller.is_right_vf = not self.__controller.is_center_vf and i % 2 != 0 
             self.__controller.vf_top = top
             self.__controller.vf_bottom = bottom
+            self.__controller.vf_center = middle
+            self.__controller.using_two_columns = False
             # Left VF
             if self.__controller.is_left_vf:
                 self.__controller.vf_bottom = middle + MIDDLE_SPACING
+                self.__controller.vf_center = LEFT_VF_MIDDLE
             # Right VF
             if self.__controller.is_right_vf:
                 self.__controller.vf_top = middle - MIDDLE_SPACING
+                self.__controller.vf_center = RIGHT_VF_MIDDLE
             # Input
             if plotted_layer.is_input_layer:
-                print(f"Input {layer.name}")
-                if is_dvf_plot:
+                if self.is_dvf_plot:
                     plotted_layer.position = INITIAL_LEFT_VF_POSITION if self.__controller.is_left_vf else INITIAL_RIGHT_VF_POSITION
                 else:
                     plotted_layer.position = INITIAL_CENTER_VF_POSITION
@@ -238,19 +248,11 @@ class NeuralNetworkPlotter:
                 ax.add_artist(ab)
                 self.__controller.plotted.append(plotted_layer)
                 continue
-            # Conv2D
-            if plotted_layer.type == "Conv2D":
-                if self.__controller.has_concatenated:
-                    plotted_layer.position.y = middle
-                else:
-                    plotted_layer.position.y = LEFT_VF_MIDDLE if self.__controller.is_left_vf else RIGHT_VF_MIDDLE
             # Concatenate
             if plotted_layer.is_concatenate_layer:
                 self.__controller.has_concatenated = True
             # Output
             if plotted_layer.is_output_layer:
-                print("OUTPUT")
-                OUTPUT_OFFSET = 0.2
                 self.__controller.vf_top = middle + OUTPUT_OFFSET
                 self.__controller.vf_bottom = middle - OUTPUT_OFFSET
                         
@@ -259,17 +261,14 @@ class NeuralNetworkPlotter:
             should_plot_weights = plotted_layer.num_neurons <= self.max_neurons and previous_layer.num_neurons <= self.max_neurons and not plotted_layer.is_concatenate_layer
             
             # Determining layer spacing and layer position
-            print(TOTAL_LAYER_SPACES)
             layer_spacing = (right - left - TEXT_X_OFFSET) / TOTAL_LAYER_SPACES if should_plot_weights else LAYER_SPACING_NO_WEIGHTS
-            layer_spacing = LAYER_SPACING_NO_WEIGHTS
             plotted_layer.position.x = previous_layer.position.x + layer_spacing
 
             # Plotting neurons and weights
-            if plotted_layer.num_neurons <= self.max_neurons:
-                print(f"Ploting {layer.name}: {i=}")
+            if plotted_layer.num_neurons <= self.max_neurons and not plotted_layer.is_conv_layer:
                 # Plotting neurons
                 plotted_layer.position.y = self.__controller.vf_top
-                neuron_spacing = (self.__controller.vf_top - self.__controller.vf_bottom) / plotted_layer.num_neurons
+                neuron_spacing = self.__controller.vf_size / plotted_layer.num_neurons
                 neuron_position = plotted_layer.position.copy()
                 layer_activations = normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
                 for j, neuron_activation in enumerate(layer_activations):
@@ -282,7 +281,7 @@ class NeuralNetworkPlotter:
                         ec="k",
                     )
                     ax.add_artist(neuron_circle)
-                    neuron_position.y -= neuron_spacing
+                    neuron_position.y -= neuron_spacing if j != plotted_layer.num_neurons - 1 else 0
                     # Plotting neuron acitavtion value of output neurons
                     if plotted_layer.is_output_layer:
                         ax.text(neuron.position.x + neuron.radius + TEXT_X_OFFSET, neuron.position.y - TEXT_Y_OFFSET, f"{j}: {neuron_activation:.4f}", fontsize=12, fontweight="bold")
@@ -300,17 +299,17 @@ class NeuralNetworkPlotter:
                             )
                             ax.add_artist(connection)
                     # Plotting symbolic connections from current layer to previous layer
-                    elif not plotted_layer.is_concatenate_layer:
-                        connection = plt.Line2D(
-                            [neuron.position.x - neuron.radius, 
-                                previous_layer.position.x + IMAGE_OFFSET],
-                            [neuron.position.y, previous_layer.position.y],
-                            color='black',
-                            alpha=CONECTION_OPACITY
-                        )
-                        ax.add_artist(connection)
+                    # elif not plotted_layer.is_concatenate_layer:
+                        # connection = plt.Line2D(
+                        #     [neuron.position.x - neuron.radius, 
+                        #         previous_layer.position.x + IMAGE_OFFSET],
+                        #     [neuron.position.y, previous_layer.position.y],
+                        #     color='black',
+                        #     alpha=CONECTION_OPACITY
+                        # )
+                        # ax.add_artist(connection)
                     # Plotting symbolic concatenate connecitons
-                    else:
+                    elif plotted_layer.is_concatenate_layer:
                         middle_spacing = 0 if j < plotted_layer.num_neurons // 2 else 2 * MIDDLE_SPACING
                         previous_radius = previous_layer.neurons[0].radius
                         previous_spacing = previous_layer.neurons[0].spacing
@@ -323,37 +322,69 @@ class NeuralNetworkPlotter:
                         )
                         ax.add_artist(connection)
             else:
+                # Plotting convolution layer 
+                if plotted_layer.is_conv_layer:
+                    # Determine size of feature maps
+                    num_feature_maps = plotted_layer.activations.shape[2]
+                    fm_size = self.__calculate_image_size(plotted_layer.num_neurons / num_feature_maps)
+                    fm_size_plot = fm_size * 0.01
+                    fm_spacing = fm_size_plot * 2
+                    plotted_layer.position.y = self.__controller.vf_center + (num_feature_maps - 1) * (fm_size_plot)
+                    # If feature maps exceed vertical space, reduce size and start from top
+                    if fm_size_plot * num_feature_maps + (num_feature_maps - 1) * fm_spacing > self.__controller.vf_size:
+                        self.__controller.using_two_columns = True
+                        plotted_layer.position.x -= fm_size_plot / 2
+                        spacing_factor = 3
+                        fm_size_plot = self.__controller.vf_size / ((num_feature_maps * 0.5) * (1 + spacing_factor) - spacing_factor) * 1.25
+                        fm_spacing = fm_size_plot * spacing_factor
+                        fm_size = fm_size_plot * 150
+                        plotted_layer.position.y = self.__controller.vf_top
+                    # For each feature map in convolution layer
+                    for f in range(num_feature_maps):
+                        if f == num_feature_maps // 2 and self.__controller.using_two_columns:
+                            plotted_layer.position.x += spacing_factor * fm_size_plot
+                            plotted_layer.position.y = self.__controller.vf_top
+                        feature_map = plotted_layer.activations[:, :, f]
+                        ab = self.__generate_image_annotation_box(
+                                feature_map,
+                                plotted_layer.position,
+                                cmap="binary",
+                                size=fm_size
+                        )
+                        ax.add_artist(ab)
+                        plotted_layer.position.y -= fm_spacing if f != num_feature_maps - 1 else 0
                 # Plotting layer as image
-                activations_image = self.__get_image(plotted_layer.activations)
-                ab = self.__generate_image_annotation_box(
-                            activations_image,
-                            plotted_layer.position,
-                            cmap="binary",
-                            size=self.__calculate_image_size(plotted_layer.num_neurons),
-                        )
-                ax.add_artist(ab)
-                # Plotting symbolic connections from image to previous layer
-                if previous_layer.num_neurons <= self.max_neurons:
-                    for previous_neuron in previous_layer.neurons:
-                        connection = plt.Line2D(
-                            [plotted_layer.position.x - IMAGE_OFFSET, 
-                                previous_neuron.position.x + previous_neuron.radius],
-                            [plotted_layer.position.y, previous_neuron.position.y],
-                            color='black',
-                            alpha=CONECTION_OPACITY
-                        )
-                        ax.add_artist(connection)
                 else:
-                    # Plotting two symbolic connections on each side of the image
-                    for l in range(2):
-                        connection = plt.Line2D(
-                            [plotted_layer.position.x - IMAGE_OFFSET, 
-                                previous_layer.position.x + IMAGE_OFFSET],
-                            [plotted_layer.position.y + IMAGE_OFFSET*(1-2*l), previous_layer.position.y],
-                            color='black',
-                            alpha=CONECTION_OPACITY
-                        )
-                        ax.add_artist(connection)
+                    activations_image = self.__get_image(plotted_layer.activations)
+                    ab = self.__generate_image_annotation_box(
+                                activations_image,
+                                plotted_layer.position,
+                                cmap="binary",
+                                size=self.__calculate_image_size(plotted_layer.num_neurons),
+                            )
+                    ax.add_artist(ab)
+                    # Plotting symbolic connections from image to previous layer
+                    # if previous_layer.num_neurons <= self.max_neurons:
+                    #     for previous_neuron in previous_layer.neurons:
+                    #         connection = plt.Line2D(
+                    #             [plotted_layer.position.x - IMAGE_OFFSET, 
+                    #                 previous_neuron.position.x + previous_neuron.radius],
+                    #             [plotted_layer.position.y, previous_neuron.position.y],
+                    #             color='black',
+                    #             alpha=CONECTION_OPACITY
+                    #         )
+                    #         ax.add_artist(connection)
+                    # else:
+                    #     # Plotting two symbolic connections on each side of the image
+                    #     for l in range(2):
+                    #         connection = plt.Line2D(
+                    #             [plotted_layer.position.x - IMAGE_OFFSET, 
+                    #                 previous_layer.position.x + IMAGE_OFFSET],
+                    #             [plotted_layer.position.y + IMAGE_OFFSET*(1-2*l), previous_layer.position.y],
+                    #             color='black',
+                    #             alpha=CONECTION_OPACITY
+                    #         )
+                    #         ax.add_artist(connection)
             
             # Plotting attribute lenses
             if self.attribute_lenses is not None:
@@ -380,7 +411,7 @@ class NeuralNetworkPlotter:
                     else:
                         al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y - IMAGE_OFFSET)
                     text = plt.Text(
-                        al_text_position.x + AL_TEXT_X_OFFSET,
+                        al_text_position.x + (AL_TEXT_X_OFFSET if not self.__controller.using_two_columns else AL_TEXT_X_OFFSET_COLUMNS),
                         al_text_position.y - AL_TEXT_Y_OFFSET,
                         al_text_string,
                         fontsize=12,
@@ -393,7 +424,7 @@ class NeuralNetworkPlotter:
             self.__controller.plotted.append(plotted_layer)
         
         # Saving plot
-        if self.save_plot:
+        if self.save_plots:
             save_dir = "results/images/"
             os.makedirs(save_dir, exist_ok=True)
             plt.savefig(f"{save_dir}/NN_PLOT_{get_current_time_string()}.png")  
@@ -429,15 +460,16 @@ class NeuralNetworkPlotter:
 
         return ab
     
-    def __get_image(self, neural_activation: np.array):
+    def __get_image(self, array: np.array):
         """
         Transforms 1D array into 2D array to be plotted as an image
         """
-        num_neurons = len(neural_activation)
+        if len(array.shape) != 1: return array
+        num_neurons = len(array)
         num_rows = int(np.sqrt(num_neurons))
         num_cols = int(np.ceil(num_neurons / num_rows))
 
-        return np.array(neural_activation).reshape(num_rows, num_cols)
+        return np.array(array).reshape(num_rows, num_cols)
 
     def __get_digit_from_y_spacing(self, total_position_plotted: float, y_spacing: float) -> int:
         """
@@ -449,12 +481,13 @@ class NeuralNetworkPlotter:
         """
         Computes size of image based on the number of neurons
         """
+        return np.log10(number_neurons) # * 1.25
         # Determined in tests
-        a = -5/1536
-        b = 533/96
+        a = -1/432
+        b = 130/27
         return number_neurons * a + b
     
-    def compute_total_layer_spaces(self) -> int:
+    def __compute_total_layer_spaces(self) -> int:
         """
         Computes the total number of layer spaces a neural network plot will have
         """
@@ -463,7 +496,7 @@ class NeuralNetworkPlotter:
         for layer in self.model.layers:
             if layer.__class__.__name__ not in PlottingControl.SHOULD_PLOT: continue    
             i += 1
-            if not has_concatenated and not self.is_dvf_plot:
+            if not has_concatenated and self.is_dvf_plot:
                 j += 1
                 if layer.__class__.__name__ == "Concatenate": has_concatenated = True
 
