@@ -208,8 +208,9 @@ class NeuralNetworkPlotter:
         INITIAL_RIGHT_VF_POSITION = Position(left, RIGHT_VF_MIDDLE)  
         INITIAL_CENTER_VF_POSITION = Position(left, middle)  
         AL_TEXT_X_OFFSET = -0.02
-        AL_TEXT_X_OFFSET_COLUMNS = -0.05
-        AL_TEXT_Y_OFFSET = 0.0325
+        AL_TEXT_X_OFFSET_COLUMNS = -0.045
+        AL_TEXT_Y_OFFSET_COLUMNS = 0.025
+        AL_TEXT_Y_OFFSET = 0.0345
         OUTPUT_OFFSET = 0.2
 
         # Setting up control structure to plot layers
@@ -329,21 +330,27 @@ class NeuralNetworkPlotter:
                     fm_size = self.__calculate_image_size(plotted_layer.num_neurons / num_feature_maps)
                     fm_size_plot = fm_size * 0.01
                     fm_spacing = fm_size_plot * 2
-                    plotted_layer.position.y = self.__controller.vf_center + (num_feature_maps - 1) * (fm_size_plot)
+                    initial_position = self.__controller.vf_center + (num_feature_maps - 1) * (fm_size_plot)
+                    plotted_layer.position.y  = initial_position    
+                    
                     # If feature maps exceed vertical space, reduce size and start from top
                     if fm_size_plot * num_feature_maps + (num_feature_maps - 1) * fm_spacing > self.__controller.vf_size:
                         self.__controller.using_two_columns = True
                         plotted_layer.position.x -= fm_size_plot / 2
-                        spacing_factor = 3
-                        fm_size_plot = self.__controller.vf_size / ((num_feature_maps * 0.5) * (1 + spacing_factor) - spacing_factor) * 1.25
+                        spacing_factor = 2
+                        fm_size_plot = self.__controller.vf_size / ((num_feature_maps * 0.5) * (1 + spacing_factor) - spacing_factor) * (1 + num_feature_maps * 0.01)
                         fm_spacing = fm_size_plot * spacing_factor
-                        fm_size = fm_size_plot * 150
-                        plotted_layer.position.y = self.__controller.vf_top
+                        fm_size = fm_size_plot * 100
+                        initial_position = self.__controller.vf_center + (num_feature_maps - 1) * (fm_size_plot / 2)
+                        plotted_layer.position.y = initial_position
+                        AL_TEXT_X_OFFSET_COLUMNS = 0.0011 * num_feature_maps - 0.0663
+                        print(AL_TEXT_X_OFFSET_COLUMNS)
+
                     # For each feature map in convolution layer
                     for f in range(num_feature_maps):
                         if f == num_feature_maps // 2 and self.__controller.using_two_columns:
                             plotted_layer.position.x += spacing_factor * fm_size_plot
-                            plotted_layer.position.y = self.__controller.vf_top
+                            plotted_layer.position.y = initial_position
                         feature_map = plotted_layer.activations[:, :, f]
                         ab = self.__generate_image_annotation_box(
                                 feature_map,
@@ -412,7 +419,7 @@ class NeuralNetworkPlotter:
                         al_text_position = Position(plotted_layer.position.x, plotted_layer.position.y - IMAGE_OFFSET)
                     text = plt.Text(
                         al_text_position.x + (AL_TEXT_X_OFFSET if not self.__controller.using_two_columns else AL_TEXT_X_OFFSET_COLUMNS),
-                        al_text_position.y - AL_TEXT_Y_OFFSET,
+                        al_text_position.y - (AL_TEXT_Y_OFFSET if not self.__controller.using_two_columns else AL_TEXT_Y_OFFSET_COLUMNS),
                         al_text_string,
                         fontsize=12,
                         fontweight='bold',
