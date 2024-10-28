@@ -5,7 +5,7 @@ import os
 from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 from typing import List, Tuple, Optional, Set
 from attr import define
-from modules.utils.utils import normalize_ndarray, get_current_time_string, compute_activations, compute_digits_model_predicts, is_dvf_model, data_generator_dvf, data_generator_svf
+import modules.utils.utils as ut
 from modules.dataset.dataset import Dataset
 from collections.abc import Iterable
 
@@ -138,7 +138,7 @@ class NeuralNetworkPlotter:
 
     @property
     def is_dvf_plot(self) -> bool:
-        return is_dvf_model(self.model)
+        return ut.is_dvf_model(self.model)
     
     def plot(self,
              *input_data: np.array,
@@ -189,10 +189,10 @@ class NeuralNetworkPlotter:
         # Calculating activations
         if self.is_dvf_plot:
             left_vf_data, right_vf_data = input_data
-            model_activations = compute_activations(self.model, left_vf_data, right_vf_data)
+            model_activations = ut.compute_activations(self.model, left_vf_data, right_vf_data)
         else:
             input_data = input_data[0]
-            model_activations = compute_activations(self.model, input_data)
+            model_activations = ut.compute_activations(self.model, input_data)
 
         # Determining neural network figure parameters
         MIDDLE_SPACING = 0.02
@@ -271,7 +271,7 @@ class NeuralNetworkPlotter:
                 plotted_layer.position.y = self.__controller.vf_top
                 neuron_spacing = self.__controller.vf_size / plotted_layer.num_neurons
                 neuron_position = plotted_layer.position.copy()
-                layer_activations = normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
+                layer_activations = ut.normalize_ndarray(plotted_layer.activations) if not plotted_layer.is_output_layer else plotted_layer.activations
                 for j, neuron_activation in enumerate(layer_activations):
                     neuron = PlottedNeuron(neuron_activation, position=neuron_position.copy(), radius=neuron_spacing/4, spacing=neuron_spacing)
                     plotted_layer.neurons.append(neuron)
@@ -288,7 +288,7 @@ class NeuralNetworkPlotter:
                         ax.text(neuron.position.x + neuron.radius + TEXT_X_OFFSET, neuron.position.y - TEXT_Y_OFFSET, f"{j}: {neuron_activation:.4f}", fontsize=12, fontweight="bold")
                     # Plotting weights
                     if should_plot_weights:
-                        layer_weights_neuron = normalize_ndarray(plotted_layer.weights[:, j])
+                        layer_weights_neuron = ut.normalize_ndarray(plotted_layer.weights[:, j])
                         for previous_neuron, connection_weight in zip(previous_layer.neurons, layer_weights_neuron):
                             if connection_weight < self.weight_threshold: continue
                             connection = plt.Line2D(
@@ -399,15 +399,15 @@ class NeuralNetworkPlotter:
                 if al_idx < len(self.attribute_lenses):
                     attribute_lens = self.attribute_lenses[al_idx]
                     if self.is_dvf_plot:
-                        if is_dvf_model(attribute_lens):
-                            digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data, right_vf_data)
+                        if ut.is_dvf_model(attribute_lens):
+                            digit_activations = ut.compute_digits_model_predicts(attribute_lens, left_vf_data, right_vf_data)
                         else:
                             if self.__controller.is_left_vf:
-                                digit_activations = compute_digits_model_predicts(attribute_lens, left_vf_data)
+                                digit_activations = ut.compute_digits_model_predicts(attribute_lens, left_vf_data)
                             else:
-                                digit_activations = compute_digits_model_predicts(attribute_lens, right_vf_data)
+                                digit_activations = ut.compute_digits_model_predicts(attribute_lens, right_vf_data)
                     else:
-                        digit_activations = compute_digits_model_predicts(attribute_lens, input_data)
+                        digit_activations = ut.compute_digits_model_predicts(attribute_lens, input_data)
                     
                     al_text_string = ''
                     for k in range(self.num_attr_lenses_top_activations):
@@ -434,7 +434,7 @@ class NeuralNetworkPlotter:
         if self.save_plots:
             save_dir = "results/images/"
             os.makedirs(save_dir, exist_ok=True)
-            plt.savefig(f"{save_dir}/NN_PLOT_{get_current_time_string()}.png")  
+            plt.savefig(f"{save_dir}/NN_PLOT_{ut.get_current_time_string()}.png")  
 
         plt.show()
 
@@ -576,22 +576,22 @@ class NeuralNetworkPlotter:
         if self.attribute_lenses is None:
             raise ValueError("Attribute lenses have not been generated yet")
         for al in self.attribute_lenses:
-            if is_dvf_model(al):
+            if ut.is_dvf_model(al):
                 n_train = len(dataset.train_vf.y)
                 n_test = len(dataset.test_vf.y)
-                training_generator = data_generator_dvf(
+                training_generator = ut.data_generator_dvf(
                     dataset.train_vf.x_left, dataset.train_vf.x_right, dataset.train_vf.y, batch_size
                 )
-                testing_generator = data_generator_dvf(
+                testing_generator = ut.data_generator_dvf(
                     dataset.test_vf.x_left, dataset.test_vf.x_right, dataset.test_vf.y, batch_size
                 )
             else:
                 n_train = len(dataset.train.y)
                 n_test = len(dataset.test.y)
-                training_generator = data_generator_svf(
+                training_generator = ut.data_generator_svf(
                     dataset.train.x, dataset.train.y, batch_size
                 )
-                testing_generator = data_generator_svf(
+                testing_generator = ut.data_generator_svf(
                     dataset.test.x, dataset.test.y, batch_size
                 )
             al.compile(

@@ -4,7 +4,8 @@ import os
 import re
 from typing import Tuple, List, Generator, Dict, Optional
 from multiprocessing import Pool
-from modules.utils.utils import get_n_digits_indices, compute_activations, compute_forward_pass, compute_mean_dynamically, is_dvf_model, compute_cosine_similarity, is_left_visual_field_layer
+import modules.utils.utils as ut
+from modules.dataset.dataset import Dataset
 import matplotlib.pyplot as plt
 import ipywidgets as widgets
 from IPython.display import display
@@ -48,21 +49,21 @@ def generate_prototypes(model: tf.keras.Model, x_data: np.array, y_data: np.arra
     print("[Cosine similarity] Starting prototype calculation...")
     
     prototypes = {}
-    digit_instances_generator = (get_n_digits_indices(y_data, d, n) for d in range(10))
-    is_drf_model = is_dvf_model(model)
+    digit_instances_generator = (ut.get_n_digits_indices(y_data, d, n) for d in range(10))
+    is_drf_model = ut.is_dvf_model(model)
     args = args_generator(is_drf_model, x_data, digit_instances_generator, n)
     for (data, (d, i, input_type)) in args:
         match input_type:
             case 0:
-                activations = compute_activations(model, data, np.zeros_like(data))
+                activations = ut.compute_activations(model, data, np.zeros_like(data))
                 key = f"{d}_l"
             case 1:
-                activations = compute_activations(model, np.zeros_like(data), data)
+                activations = ut.compute_activations(model, np.zeros_like(data), data)
                 key = f"{d}_r"
             case 2:
-                activations = compute_activations(model, data)
+                activations = ut.compute_activations(model, data)
                 key = f"{d}"
-        prototypes[key] = activations if i == 0 else compute_mean_dynamically(prototypes[key], activations, i)
+        prototypes[key] = activations if i == 0 else ut.compute_mean_dynamically(prototypes[key], activations, i)
 
     # Sort prototypes by visual field. This is done to make cosine similarity matrix calculations easier later on
     if is_drf_model: prototypes = {k: prototypes[k] for k in sorted(prototypes, key=lambda p: p.split('_')[1])}
@@ -86,11 +87,11 @@ def compute_activations_mp(args: Tuple[np.array, np.array, Tuple[int, int, int]]
     global g_model
     match input_type:
         case 0:
-            activations = compute_forward_pass(g_model, data, np.zeros_like(data))
+            activations = ut.compute_forward_pass(g_model, data, np.zeros_like(data))
         case 1:
-            activations = compute_forward_pass(g_model, np.zeros_like(data), data)
+            activations = ut.compute_forward_pass(g_model, np.zeros_like(data), data)
         case 2:
-            activations = compute_forward_pass(g_model, data)
+            activations = ut.compute_forward_pass(g_model, data)
 
     return activations, (digit, i, input_type)
 
@@ -111,8 +112,8 @@ def generate_prototypes_mp(model: tf.keras.Model, x_data: np.array, y_data: np.a
     print("[Cosine similarity] Starting multiprocess prototype calculation...")
 
     prototypes = {}
-    digit_instances_generator = (get_n_digits_indices(y_data, d, n) for d in range(10))
-    is_drf_model = is_dvf_model(model)
+    digit_instances_generator = (ut.get_n_digits_indices(y_data, d, n) for d in range(10))
+    is_drf_model = ut.is_dvf_model(model)
     args_len = 20*n if is_drf_model else 10*n
 
     # Model needs to be global in order for multiprocessing to work (loading model from file is causing deadlock)
@@ -124,7 +125,7 @@ def generate_prototypes_mp(model: tf.keras.Model, x_data: np.array, y_data: np.a
     with Pool(processes=workers) as pool:
         for activations, (d, i, input_type) in pool.imap(compute_activations_mp, args, chunksize=args_len//workers):
             key = f"{d}_l" if input_type == 0 else f"{d}_r" if input_type == 1 else f"{d}"
-            prototypes[key] = activations if i == 0 else compute_mean_dynamically(prototypes[key], activations, i)
+            prototypes[key] = activations if i == 0 else ut.compute_mean_dynamically(prototypes[key], activations, i)
     del g_model # Save memory
 
     # Sort prototypes by visual field. This is done to make cosine similarity matrix calculations easier later on
@@ -256,7 +257,7 @@ def compute_cosine_similarity_matrix(model: tf.keras.Model, prototypes: Dict[str
     Output:
     List[np.array]: list containing the cosine similarity matrix for each layer of the model
     """
-    is_drf_model = is_dvf_model(model)
+    is_drf_model = ut.is_dvf_model(model)
     is_drf_layer = False
     cs_matrices = {}
     for i, layer in enumerate(model.layers):
@@ -273,7 +274,7 @@ def compute_cosine_similarity_matrix(model: tf.keras.Model, prototypes: Dict[str
             cs_matrix = np.zeros((20, 20))
             for d1_vf, d2_vf in digit_vf_combinations:
                 idx1, idx2 = key_to_idx(d1_vf), key_to_idx(d2_vf)
-                cs_matrix[idx1, idx2] = compute_cosine_similarity(prototypes[d1_vf][i], prototypes[d2_vf][i])
+                cs_matrix[idx1, idx2] = ut.compute_cosine_similarity(prototypes[d1_vf][i], prototypes[d2_vf][i])
         else:
             # Combinations of digits
             digit_combinations = combinations(range(10), 2)
@@ -281,12 +282,12 @@ def compute_cosine_similarity_matrix(model: tf.keras.Model, prototypes: Dict[str
             for (d1, d2) in digit_combinations:
                 if is_drf_model:
                     # Determine if layer is left visual field
-                    if is_left_visual_field_layer(layer):
-                        cs_matrix[d1, d2] = compute_cosine_similarity(prototypes[f'{d1}_l'][i], prototypes[f'{d2}_l'][i]) 
+                    if ut.is_left_visual_field_layer(layer):
+                        cs_matrix[d1, d2] = ut.compute_cosine_similarity(prototypes[f'{d1}_l'][i], prototypes[f'{d2}_l'][i]) 
                     else:
-                        cs_matrix[d1, d2] = compute_cosine_similarity(prototypes[f'{d1}_r'][i], prototypes[f'{d2}_r'][i])
+                        cs_matrix[d1, d2] = ut.compute_cosine_similarity(prototypes[f'{d1}_r'][i], prototypes[f'{d2}_r'][i])
                 else:
-                    cs_matrix[d1, d2] = compute_cosine_similarity(prototypes[f'{d1}'][i], prototypes[f'{d2}'][i])
+                    cs_matrix[d1, d2] = ut.compute_cosine_similarity(prototypes[f'{d1}'][i], prototypes[f'{d2}'][i])
 
         cs_matrices[layer.name] = cs_matrix.copy()
     
@@ -484,3 +485,38 @@ class EpochStopping(tf.keras.callbacks.Callback):
         if self.should_stop():
             self.reset()
             self.model.stop_training = True
+
+def evaluate_models(models: Dict[str, tf.keras.Model], dataset: Dataset) -> None:
+    """
+    Evaluates the models passed as argument
+
+    Input:
+    models: Dict[str, tf.keras.Model]: dictionary containing the models to be evaluated
+    """
+
+    acc_mean = {}
+    acc_std = {}
+    loss_mean = {}
+    loss_std = {}
+    for key in models:
+        acc_list = []
+        loss_list = []
+        for model in models[key]:
+            loss, acc = model.evaluate([dataset.test_vf.x_left, dataset.test_vf.x_right], dataset.test_vf.y)
+            acc_list.append(acc)
+            loss_list.append(loss)
+        acc_mean[key] = np.mean(acc_list)
+        loss_mean[key] = np.mean(loss_list)
+        acc_std[key] = np.std(acc_list)
+        loss_std[key] = np.std(loss_list)
+
+    x = list(acc_mean.keys())
+    y = list(acc_mean.values())
+
+    plt.title("Avg Accuracy vs Number of Layers for DRF Model")
+    plt.xlabel("Number of Layers")
+    plt.ylabel("Accuracy")
+    plt.ylim(0.8, 1)
+    plt.fill_between(x, y - np.array(list(acc_std.values())), np.array(y) + np.array(list(acc_std.values())), alpha=0.2)
+
+    plt.plot(x, y)
