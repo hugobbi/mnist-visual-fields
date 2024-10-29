@@ -344,7 +344,6 @@ class NeuralNetworkPlotter:
                         initial_position = self.__controller.vf_center + (num_feature_maps - 1) * (fm_size_plot / 2)
                         plotted_layer.position.y = initial_position
                         AL_TEXT_X_OFFSET_COLUMNS = 0.0011 * num_feature_maps - 0.0663
-                        print(AL_TEXT_X_OFFSET_COLUMNS)
 
                     # For each feature map in convolution layer
                     for f in range(num_feature_maps):
