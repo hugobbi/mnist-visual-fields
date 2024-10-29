@@ -433,7 +433,7 @@ class NeuralNetworkPlotter:
         if self.save_plots:
             save_dir = "results/images/"
             os.makedirs(save_dir, exist_ok=True)
-            plt.savefig(f"{save_dir}/NN_PLOT_{ut.get_current_time_string()}.png")  
+            plt.savefig(f"{save_dir}/nn_plot_{ut.get_current_time_string()}.png")  
 
         plt.show()
 
